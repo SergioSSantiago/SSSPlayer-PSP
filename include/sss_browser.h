@@ -6,7 +6,7 @@
 #define SSS_LIST_MAX 512
 #define SSS_DEV_MAX 4
 
-/* is_dir: 0 = mp3 file, 1 = directory, 3 = storage mount. */
+/* is_dir: 0 = mp3, 1 = directory, 2 = other file, 3 = storage mount. */
 typedef struct SssEntry {
 	char name[SSS_NAME_MAX];
 	int is_dir;

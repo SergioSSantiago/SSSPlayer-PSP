@@ -232,6 +232,10 @@ static void draw_browser(const SssPlayStatus *st, const char *accept,
 			color = UI_TEXT;
 			sss_path_tail(shown, sizeof shown, entry->name, 40);
 			snprintf(label, sizeof label, "%s/", shown);
+		} else if (entry->is_dir == 2) {
+			color = UI_MUTED;
+			sss_path_tail(shown, sizeof shown, entry->name, 40);
+			snprintf(label, sizeof label, "%s", shown);
 		} else {
 			sss_path_tail(shown, sizeof shown, entry->name, 40);
 			snprintf(label, sizeof label, "%s", shown);
@@ -293,8 +297,18 @@ static void draw_now(const SssPlayStatus *st, const char *accept, const char *ba
 		ui_text(32, 190, 1, UI_DANGER, line);
 	}
 
-	snprintf(hint, sizeof hint, "%s pause   %s stop   Triangle files   Start quit",
-	         accept, back);
+	if (st->state == SSS_PLAY_STOPPED)
+		snprintf(hint, sizeof hint,
+		         "%s play   %s files   Triangle files   Start quit", accept,
+		         back);
+	else if (st->state == SSS_PLAY_PAUSED)
+		snprintf(hint, sizeof hint,
+		         "%s play   %s stop   Triangle files   Start quit", accept,
+		         back);
+	else
+		snprintf(hint, sizeof hint,
+		         "%s pause   %s stop   Triangle files   Start quit", accept,
+		         back);
 	draw_hint(hint);
 }
 

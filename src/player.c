@@ -10,6 +10,7 @@
 #include <string.h>
 
 #define MP3_EOF 0x80671402u
+#define AUDIO_SRC_ALREADY_RESERVED 0x80268002u
 
 static unsigned char mp3_buf[16 * 1024] __attribute__((aligned(64)));
 static unsigned char pcm_buf[16 * (1152 / 2)] __attribute__((aligned(64)));
@@ -211,10 +212,10 @@ static void audio_close(void)
 		sceIoClose(g_fd);
 		g_fd = -1;
 	}
-	if (g_src_ready) {
-		sceAudioSRCChRelease();
-		g_src_ready = 0;
-	}
+	/* Always release: a failed reserve can leave the channel owned while
+	 * g_src_ready is still 0, which then blocks every later play. */
+	sceAudioSRCChRelease();
+	g_src_ready = 0;
 	g_paused = 0;
 	g_src_samples = 0;
 }
@@ -310,11 +311,15 @@ static void output_pcm(const short *pcm, int samples)
 		if (reserve > 1152)
 			reserve = 1152;
 		rc = sceAudioSRCChReserve(reserve, g_rate, 2);
+		if ((unsigned)rc == AUDIO_SRC_ALREADY_RESERVED) {
+			sceAudioSRCChRelease();
+			rc = sceAudioSRCChReserve(reserve, g_rate, 2);
+		}
 		if (rc < 0) {
 			char err[96];
 			char name[SSS_NAME_MAX];
 			snprintf(name, sizeof name, "%s", g_status.name);
-			snprintf(err, sizeof err, "Audio %08X", (unsigned)rc);
+			snprintf(err, sizeof err, "Audio channel busy");
 			audio_close();
 			publish(SSS_PLAY_STOPPED, name, err, 0, g_duration);
 			return;
@@ -502,10 +507,17 @@ static int audio_thread(SceSize args, void *argp)
 			snprintf(name, sizeof name, "%s", g_status.name);
 			audio_close();
 			publish(SSS_PLAY_STOPPED, name, NULL, 0, 0);
-		} else if (cmd == CMD_PAUSE && g_handle >= 0) {
-			g_paused = !g_paused;
-			publish(g_paused ? SSS_PLAY_PAUSED : SSS_PLAY_PLAYING, NULL, NULL,
-			        g_rate > 0 ? g_played_samples / g_rate : 0, g_duration);
+		} else if (cmd == CMD_PAUSE) {
+			if (g_handle >= 0) {
+				g_paused = !g_paused;
+				publish(g_paused ? SSS_PLAY_PAUSED : SSS_PLAY_PLAYING, NULL,
+				        NULL, g_rate > 0 ? g_played_samples / g_rate : 0,
+				        g_duration);
+			} else if (g_pl_count > 0 && g_pl_index >= 0 &&
+			           g_pl_index < g_pl_count) {
+				/* Stopped (or audio error): Accept plays the same track again. */
+				open_current();
+			}
 		} else if (cmd == CMD_NEXT)
 			cmd_next();
 		else if (cmd == CMD_PREV)

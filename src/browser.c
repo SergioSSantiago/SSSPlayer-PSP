@@ -19,9 +19,10 @@ static int dir_exists(const char *path)
 
 static int entry_rank(int kind)
 {
-	if (kind == 2)
+	/* Directories first, then MP3, then other files (video, etc.). */
+	if (kind == 1 || kind == 3)
 		return 0;
-	if (kind == 1)
+	if (kind == 0)
 		return 1;
 	return 2;
 }
@@ -118,10 +119,6 @@ void browser_reload(SssBrowser *browser)
 		}
 
 		is_dir = FIO_S_ISDIR(ent.d_stat.st_mode) || FIO_SO_ISDIR(ent.d_stat.st_attr);
-		if (!is_dir && !sss_path_is_mp3(ent.d_name)) {
-			memset(&ent, 0, sizeof ent);
-			continue;
-		}
 		if (browser->count >= SSS_LIST_MAX) {
 			browser->truncated = 1;
 			break;
@@ -129,7 +126,12 @@ void browser_reload(SssBrowser *browser)
 
 		snprintf(browser->entries[browser->count].name, SSS_NAME_MAX, "%s",
 		         ent.d_name);
-		browser->entries[browser->count].is_dir = is_dir ? 1 : 0;
+		if (is_dir)
+			browser->entries[browser->count].is_dir = 1;
+		else if (sss_path_is_mp3(ent.d_name))
+			browser->entries[browser->count].is_dir = 0;
+		else
+			browser->entries[browser->count].is_dir = 2;
 		browser->count++;
 		memset(&ent, 0, sizeof ent);
 	}
@@ -234,8 +236,14 @@ int browser_open(SssBrowser *browser)
 		return 1;
 	}
 
-	if (sss_path_is_mp3(entry->name))
+	if (entry->is_dir == 0 && sss_path_is_mp3(entry->name))
 		return 2;
+
+	if (entry->is_dir == 2) {
+		snprintf(browser->message, sizeof browser->message,
+		         "Only MP3 audio for now");
+		return 0;
+	}
 	return 0;
 }
 
