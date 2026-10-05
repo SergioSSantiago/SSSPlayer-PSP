@@ -1,14 +1,15 @@
 /*
  * SSSPlayer for PSP and PSP Go.
  * One EBOOT: Memory Stick is ms0:, PSP Go internal flash is ef0:.
+ * The shell follows the Vita Terminus layout: header, storage list, mini player.
  */
 
 #include "sss_browser.h"
 #include "sss_player.h"
+#include "sss_ui.h"
 #include "version.h"
 
 #include <pspkernel.h>
-#include <pspdebug.h>
 #include <pspctrl.h>
 #include <pspdisplay.h>
 #include <psppower.h>
@@ -21,18 +22,11 @@ PSP_MODULE_INFO("SSSPlayer", 0, 1, 0);
 PSP_MAIN_THREAD_ATTR(THREAD_ATTR_USER | THREAD_ATTR_VFPU);
 PSP_HEAP_SIZE_KB(8192);
 
-#define printf pspDebugScreenPrintf
-
-#define COL_TEXT 0xffffffff
-#define COL_DIM 0xffaaaaaa
-#define COL_DIR 0xffffccaa
-#define COL_PICK 0xff66ccff
-#define COL_OK 0xff66ff88
-#define COL_WARN 0xff00ffff
-#define COL_ERR 0xff4444ff
-#define COL_BG 0xff20140c
-
-#define LIST_ROWS 16
+#define ROW_Y 60
+#define ROW_H 20
+#define ROW_N 8
+#define MINI_Y 222
+#define HINT_Y 258
 
 static volatile int g_running = 1;
 static int g_cross_accept = 1;
@@ -90,13 +84,6 @@ static void fmt_time(char *dst, size_t n, int sec)
 		snprintf(dst, n, "%d:%02d", sec / 60, sec % 60);
 }
 
-static void draw_at(int x, int y, unsigned int color, const char *text)
-{
-	pspDebugScreenSetTextColor(color);
-	pspDebugScreenSetXY(x, y);
-	printf("%s", text);
-}
-
 static void update_power(const SssPlayStatus *st)
 {
 	int want_fast = st->state == SSS_PLAY_PLAYING;
@@ -112,108 +99,162 @@ static void update_power(const SssPlayStatus *st)
 		scePowerTick(PSP_POWER_TICK_SUSPEND);
 }
 
-static void draw_status_line(int y, const SssPlayStatus *st)
+static void draw_brackets(int x, int y, int size)
+{
+	int mark = size / 4;
+	if (mark < 4)
+		mark = 4;
+	ui_fill(x - 2, y - 2, mark, 2, UI_TEXT);
+	ui_fill(x - 2, y - 2, 2, mark, UI_TEXT);
+	ui_fill(x + size - mark + 2, y + size, mark, 2, UI_WARM);
+	ui_fill(x + size, y + size - mark, 2, mark, UI_WARM);
+}
+
+static void draw_header(const char *scene)
+{
+	char bat[8];
+	int pct = -1;
+
+	ui_fill(0, 0, UI_W, 36, UI_SURFACE);
+	draw_brackets(8, 6, 24);
+	ui_logo(8, 6, 24);
+	ui_text(40, 6, 1, UI_TEXT, "SSSPlayer");
+	ui_text(40, 20, 1, UI_DIM, scene);
+	ui_fill(0, 35, UI_W, 1, UI_MUTED);
+	ui_fill(300, 34, 120, 2, UI_TEXT);
+	ui_fill(430, 34, 50, 2, UI_WARM);
+
+	if (scePowerIsBatteryExist() == 1)
+		pct = scePowerGetBatteryLifePercent();
+	if (pct >= 0 && pct <= 100) {
+		snprintf(bat, sizeof bat, "%d%%", pct);
+		ui_text(UI_W - 8 - ui_text_px(bat, 1), 14, 1, UI_DIM, bat);
+	}
+}
+
+static void draw_hint(const char *text)
+{
+	ui_fill(0, HINT_Y - 4, UI_W, UI_H - (HINT_Y - 4), UI_SURFACE);
+	ui_fill(0, HINT_Y - 4, UI_W, 1, UI_MUTED);
+	ui_text(8, HINT_Y, 1, UI_DIM, text);
+}
+
+static void draw_mini(const SssPlayStatus *st)
 {
 	char pos[16];
-	char name[40];
-	char line[68];
+	char line[80];
+	char name[24];
+	int width = 0;
 
+	ui_fill(8, MINI_Y, UI_W - 16, 30, UI_RAISED);
+	ui_fill(8, MINI_Y, 3, 30, st->state == SSS_PLAY_PLAYING ? UI_TEXT : UI_DIM);
 	if (st->error[0] != '\0') {
-		sss_path_tail(line, sizeof line, st->error, 60);
-		draw_at(0, y, COL_ERR, line);
+		sss_path_tail(line, sizeof line, st->error, 52);
+		ui_text(18, MINI_Y + 8, 1, UI_DANGER, line);
 		return;
 	}
 	if (st->state == SSS_PLAY_STOPPED && st->name[0] == '\0') {
-		draw_at(0, y, COL_DIM, "Nothing playing");
+		ui_text(18, MINI_Y + 11, 1, UI_DIM, "Nothing playing");
 		return;
 	}
-
 	fmt_time(pos, sizeof pos, st->position_sec);
-	sss_path_tail(name, sizeof name, st->name, 32);
+	sss_path_tail(name, sizeof name, st->name, 20);
 	if (st->state == SSS_PLAY_PAUSED)
-		snprintf(line, sizeof line, "Paused %s  %s", pos, name);
+		snprintf(line, sizeof line, "Paused  %s  %s", pos, name);
 	else if (st->state == SSS_PLAY_PLAYING)
-		snprintf(line, sizeof line, "Play   %s  %s", pos, name);
+		snprintf(line, sizeof line, "Play    %s  %s", pos, name);
 	else
-		snprintf(line, sizeof line, "Stop   %s", name);
-	draw_at(0, y, st->state == SSS_PLAY_PAUSED ? COL_WARN : COL_OK, line);
+		snprintf(line, sizeof line, "Stop    %s", name);
+	ui_text(18, MINI_Y + 4, 1, UI_TEXT, line);
+	if (st->duration_sec > 0) {
+		width = ((UI_W - 36) * st->position_sec) / st->duration_sec;
+		if (width < 0)
+			width = 0;
+		if (width > UI_W - 36)
+			width = UI_W - 36;
+	}
+	ui_fill(18, MINI_Y + 20, UI_W - 36, 4, UI_BG);
+	if (width > 0)
+		ui_fill(18, MINI_Y + 20, width, 4, UI_TEXT);
 }
 
 static void draw_browser(const SssPlayStatus *st, const char *accept,
                          const char *back)
 {
-	char line[96];
-	char shown[80];
-	int y;
+	char crumb[80];
+	char shown[40];
+	char hint[80];
 	int i;
-	int pct;
 
-	sss_path_tail(shown, sizeof shown, g_browser.path[0] ? g_browser.path : "(no storage)", 58);
-	draw_at(0, 1, COL_TEXT, shown);
-
-	if (g_browser.message[0])
-		draw_at(0, 2, COL_WARN, g_browser.message);
+	draw_header("Files");
+	ui_fill(8, 40, UI_W - 16, 16, UI_RAISED);
+	ui_fill(12, 43, 3, 10, UI_TEXT);
+	if (browser_at_roots(&g_browser))
+		snprintf(crumb, sizeof crumb, "Files");
+	else {
+		sss_path_tail(shown, sizeof shown, g_browser.path, 40);
+		snprintf(crumb, sizeof crumb, "Files / %s", shown);
+	}
+	ui_text(20, 44, 1, UI_DIM, crumb);
 
 	if (g_browser.cursor < g_list_top)
 		g_list_top = g_browser.cursor;
-	if (g_browser.cursor >= g_list_top + LIST_ROWS)
-		g_list_top = g_browser.cursor - LIST_ROWS + 1;
+	if (g_browser.cursor >= g_list_top + ROW_N)
+		g_list_top = g_browser.cursor - ROW_N + 1;
 	if (g_list_top < 0)
 		g_list_top = 0;
 
-	for (i = 0; i < LIST_ROWS; i++) {
+	if (g_browser.count == 0 && g_browser.message[0]) {
+		ui_fill(80, 100, 320, 40, UI_SURFACE);
+		ui_text(96, 114, 1, UI_TEXT, g_browser.message);
+	}
+
+	for (i = 0; i < ROW_N; i++) {
 		int index = g_list_top + i;
 		const SssEntry *entry;
-		unsigned int color = COL_TEXT;
-		char mark = ' ';
+		int y = ROW_Y + i * ROW_H;
+		unsigned int color = UI_TEXT;
+		char label[48];
 
-		y = 4 + i;
-		if (index >= g_browser.count) {
-			draw_at(0, y, COL_TEXT, "");
-			continue;
-		}
+		if (index >= g_browser.count)
+			break;
 		entry = &g_browser.entries[index];
-		if (index == g_browser.cursor) {
-			mark = '>';
-			color = COL_PICK;
+		ui_fill(8, y, UI_W - 16, ROW_H - 2,
+		        index == g_browser.cursor ? UI_FOCUS : UI_SURFACE);
+		if (index == g_browser.cursor)
+			ui_fill(8, y, 3, ROW_H - 2, UI_TEXT);
+		if (entry->is_dir == 3) {
+			sss_path_tail(shown, sizeof shown, entry->name, 28);
+			snprintf(label, sizeof label, "%s", shown);
+			ui_text(UI_W - 16 - ui_text_px(g_browser.devices[index].id, 1),
+			        y + 6, 1, UI_DIM, g_browser.devices[index].id);
 		} else if (entry->is_dir == 1) {
-			color = COL_DIR;
-		} else if (entry->is_dir == 2) {
-			color = COL_WARN;
+			color = UI_TEXT;
+			sss_path_tail(shown, sizeof shown, entry->name, 40);
+			snprintf(label, sizeof label, "%s/", shown);
+		} else {
+			sss_path_tail(shown, sizeof shown, entry->name, 40);
+			snprintf(label, sizeof label, "%s", shown);
 		}
-
-		sss_path_tail(shown, sizeof shown, entry->name, 54);
-		if (entry->is_dir == 1)
-			snprintf(line, sizeof line, "%c %s/", mark, shown);
-		else
-			snprintf(line, sizeof line, "%c %s", mark, shown);
-		draw_at(0, y, color, line);
+		ui_text(18, y + 6, 1, color, label);
 	}
 
-	draw_status_line(21, st);
+	if (g_browser.message[0] && g_browser.count > 0)
+		ui_text(8, ROW_Y + ROW_N * ROW_H, 1, UI_WARM, g_browser.message);
 
-	snprintf(line, sizeof line, "%s open   %s back   Tri now   Start quit",
+	draw_mini(st);
+	snprintf(hint, sizeof hint, "%s open   %s back   Triangle now   Start quit",
 	         accept, back);
-	draw_at(0, 23, COL_DIM, line);
-	draw_at(0, 24, COL_DIM, "L/R track   Select pause   Left/Right 10s");
-
-	pct = -1;
-	if (scePowerIsBatteryExist() == 1)
-		pct = scePowerGetBatteryLifePercent();
-	if (pct >= 0 && pct <= 100) {
-		snprintf(line, sizeof line, "%d%%", pct);
-		draw_at(54, 0, COL_DIM, line);
-	}
+	draw_hint(hint);
 }
 
 static void draw_now(const SssPlayStatus *st, const char *accept, const char *back)
 {
 	char pos[16];
 	char dur[16];
-	char line[96];
-	char bar[40];
-	int filled = 0;
-	int i;
+	char line[80];
+	char hint[80];
+	int width = 0;
 	const char *state;
 
 	if (st->state == SSS_PLAY_PAUSED)
@@ -223,41 +264,54 @@ static void draw_now(const SssPlayStatus *st, const char *accept, const char *ba
 	else
 		state = "Stopped";
 
-	draw_at(0, 2, COL_TEXT, state);
-	sss_path_tail(line, sizeof line, st->name[0] ? st->name : "(no track)", 60);
-	draw_at(0, 4, COL_PICK, line);
+	draw_header(state);
+	sss_path_tail(line, sizeof line, st->name[0] ? st->name : "(no track)", 26);
+	ui_text((UI_W - ui_text_px(line, 2)) / 2, 78, 2, UI_TEXT, line);
 
 	fmt_time(pos, sizeof pos, st->position_sec);
 	fmt_time(dur, sizeof dur, st->duration_sec);
 	if (st->duration_sec > 0) {
-		filled = (st->position_sec * 30) / st->duration_sec;
-		if (filled > 30)
-			filled = 30;
-		if (filled < 0)
-			filled = 0;
+		width = (400 * st->position_sec) / st->duration_sec;
+		if (width < 0)
+			width = 0;
+		if (width > 400)
+			width = 400;
 	}
-	bar[0] = '[';
-	for (i = 0; i < 30; i++)
-		bar[1 + i] = (i < filled) ? '=' : '-';
-	bar[31] = ']';
-	bar[32] = '\0';
-	snprintf(line, sizeof line, "%s  %s / %s", bar, pos, dur);
-	draw_at(0, 6, COL_OK, line);
+	ui_fill(40, 130, 400, 8, UI_SURFACE);
+	if (width > 0)
+		ui_fill(40, 130, width, 8, UI_TEXT);
+	snprintf(line, sizeof line, "%s / %s", pos, dur);
+	ui_text((UI_W - ui_text_px(line, 1)) / 2, 148, 1, UI_DIM, line);
 
 	if (st->sample_rate > 0) {
-		snprintf(line, sizeof line, "%d kbps   %d Hz   %s",
-		         st->bitrate_kbps, st->sample_rate,
-		         st->channels == 1 ? "mono" : "stereo");
-		draw_at(0, 8, COL_DIM, line);
+		snprintf(line, sizeof line, "%d kbps   %d Hz   %s", st->bitrate_kbps,
+		         st->sample_rate, st->channels == 1 ? "mono" : "stereo");
+		ui_text((UI_W - ui_text_px(line, 1)) / 2, 168, 1, UI_MUTED, line);
+	}
+	if (st->error[0]) {
+		sss_path_tail(line, sizeof line, st->error, 52);
+		ui_text(32, 190, 1, UI_DANGER, line);
 	}
 
-	if (st->error[0])
-		draw_at(0, 10, COL_ERR, st->error);
+	snprintf(hint, sizeof hint, "%s pause   %s stop   Triangle files   Start quit",
+	         accept, back);
+	draw_hint(hint);
+}
 
-	snprintf(line, sizeof line, "%s pause   %s stop   Tri files", accept, back);
-	draw_at(0, 22, COL_DIM, line);
-	draw_at(0, 23, COL_DIM, "Left/Right 10s   L prev   R next");
-	draw_at(0, 24, COL_DIM, "Select pause   Start quit");
+static void draw_splash(void)
+{
+	const char *title = "SSSPlayer";
+	char ver[16];
+
+	ui_begin();
+	draw_brackets(192, 64, 96);
+	ui_logo(192, 64, 96);
+	ui_text((UI_W - ui_text_px(title, 2)) / 2, 176, 2, UI_TEXT, title);
+	snprintf(ver, sizeof ver, "%s", SSSPLAYER_PSP_VERSION);
+	ui_text((UI_W - ui_text_px(ver, 1)) / 2, 200, 1, UI_DIM, ver);
+	ui_text((UI_W - ui_text_px("PSP and PSP Go", 1)) / 2, 216, 1, UI_MUTED,
+	        "PSP and PSP Go");
+	ui_end();
 }
 
 static void play_selection(void)
@@ -266,9 +320,8 @@ static void play_selection(void)
 	int count;
 
 	count = browser_mp3_list(&g_browser, g_names, SSS_PL_MAX, &start);
-	if (start < 0 || count <= 0) {
+	if (start < 0 || count <= 0)
 		return;
-	}
 	if (player_play_list(g_browser.path, g_names, count, start) == 0)
 		g_view_now = 1;
 }
@@ -368,16 +421,14 @@ static void handle_input(unsigned int buttons, unsigned int prev)
 
 int main(int argc, char *argv[])
 {
-	unsigned int prev_buttons = 0;
+	unsigned int prev_buttons = 0xFFFFFFFF;
 	const char *launched = NULL;
+	int splash;
+	SceCtrlData pad;
 
 	setup_callbacks();
-	pspDebugScreenInit();
-	pspDebugScreenSetBackColor(COL_BG);
-	pspDebugScreenSetTextColor(COL_TEXT);
-	pspDebugScreenClear();
-	draw_at(0, 0, COL_TEXT, SSSPLAYER_PSP_NAME);
-	draw_at(0, 2, COL_DIM, "Loading...");
+	ui_init();
+	draw_splash();
 
 	sceCtrlSetSamplingCycle(0);
 	sceCtrlSetSamplingMode(PSP_CTRL_MODE_ANALOG);
@@ -389,14 +440,25 @@ int main(int argc, char *argv[])
 	browser_init(&g_browser, launched);
 	player_init();
 
+	for (splash = 0; splash < 90 && g_running; splash++) {
+		sceCtrlReadBufferPositive(&pad, 1);
+		if (pad.Buttons)
+			break;
+		draw_splash();
+	}
 	while (g_running) {
-		SceCtrlData pad;
+		sceCtrlPeekBufferPositive(&pad, 1);
+		if (!pad.Buttons)
+			break;
+		draw_splash();
+	}
+	prev_buttons = pad.Buttons;
+
+	while (g_running) {
 		SssPlayStatus status;
 		const char *accept = g_cross_accept ? "X" : "O";
 		const char *back = g_cross_accept ? "O" : "X";
-		char title[64];
 
-		sceDisplayWaitVblankStart();
 		sceCtrlReadBufferPositive(&pad, 1);
 		player_get_status(&status);
 		update_power(&status);
@@ -405,20 +467,17 @@ int main(int argc, char *argv[])
 		if (!g_running)
 			break;
 
-		pspDebugScreenSetBackColor(COL_BG);
-		pspDebugScreenClear();
-		snprintf(title, sizeof title, "%s %s", SSSPLAYER_PSP_NAME,
-		         SSSPLAYER_PSP_VERSION);
-		draw_at(0, 0, COL_TEXT, title);
-
+		ui_begin();
 		if (g_view_now)
 			draw_now(&status, accept, back);
 		else
 			draw_browser(&status, accept, back);
+		ui_end();
 	}
 
 	player_shutdown();
 	scePowerSetClockFrequency(222, 222, 111);
+	ui_shutdown();
 	sceKernelExitGame();
 	return 0;
 }

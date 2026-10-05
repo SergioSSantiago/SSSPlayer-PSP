@@ -6,7 +6,7 @@
 #define SSS_LIST_MAX 512
 #define SSS_DEV_MAX 4
 
-/* is_dir: 0 = mp3 file, 1 = directory, 2 = switch to the other memory. */
+/* is_dir: 0 = mp3 file, 1 = directory, 3 = storage mount. */
 typedef struct SssEntry {
 	char name[SSS_NAME_MAX];
 	int is_dir;
@@ -30,6 +30,7 @@ typedef struct SssBrowser {
 } SssBrowser;
 
 void browser_init(SssBrowser *browser, const char *launched_from);
+int browser_at_roots(const SssBrowser *browser);
 void browser_reload(SssBrowser *browser);
 void browser_move(SssBrowser *browser, int delta);
 /* 0 = stayed, 1 = entered a directory or switched memory, 2 = mp3 file. */

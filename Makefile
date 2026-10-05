@@ -1,5 +1,5 @@
 TARGET = SSSPlayer
-OBJS = src/path.o src/browser.o src/player.o src/main.o
+OBJS = src/path.o src/browser.o src/player.o src/ui.o src/main.o
 
 # Prefer psp-config already on PATH. Otherwise use ~/pspdev.
 ifeq ($(shell psp-config --pspsdk-path 2>/dev/null),)
@@ -19,10 +19,12 @@ endif
 CFLAGS = -O2 -G0 -Wall -Wextra -Iinclude
 CXXFLAGS = $(CFLAGS)
 ASFLAGS = $(CFLAGS)
-LIBS = -lpspmp3 -lpspaudio -lpsppower -lpsputility -lm
+LIBS = -lpspgu -lpspmp3 -lpspaudio -lpsppower -lpsputility -lm
 
 EXTRA_TARGETS = EBOOT.PBP
 PSP_EBOOT_TITLE = SSSPlayer
+PSP_EBOOT_ICON = assets/icon0.png
+PSP_EBOOT_PIC1 = assets/pic1.png
 PSP_FW_VERSION = 600
 
 ifeq ($(PSPSDK),)

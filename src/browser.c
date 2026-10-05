@@ -66,60 +66,37 @@ static void add_device(SssBrowser *browser, const char *id, const char *label)
 	browser->device_count++;
 }
 
-static void prefer_start(SssBrowser *browser, const char *id)
+int browser_at_roots(const SssBrowser *browser)
 {
-	char trial[SSS_PATH_MAX];
-
-	snprintf(trial, sizeof trial, "%s/MUSIC", id);
-	if (dir_exists(trial)) {
-		snprintf(browser->path, sizeof browser->path, "%s", trial);
-		return;
-	}
-	snprintf(trial, sizeof trial, "%s/MP3", id);
-	if (dir_exists(trial)) {
-		snprintf(browser->path, sizeof browser->path, "%s", trial);
-		return;
-	}
-	snprintf(browser->path, sizeof browser->path, "%s/", id);
-}
-
-static void enter_device(SssBrowser *browser)
-{
-	if (browser->device_count <= 0)
-		return;
-	if (browser->device_index < 0 || browser->device_index >= browser->device_count)
-		browser->device_index = 0;
-	prefer_start(browser, browser->devices[browser->device_index].id);
-	browser->cursor = 0;
-	browser_reload(browser);
-	if (browser->count > 1 && browser->entries[0].is_dir == 2)
-		browser->cursor = 1;
-}
-
-static const char *other_label(const SssBrowser *browser)
-{
-	int other;
-
-	if (browser->device_count < 2)
-		return NULL;
-	other = (browser->device_index + 1) % browser->device_count;
-	return browser->devices[other].label;
+	return browser && browser->path[0] == '\0';
 }
 
 void browser_reload(SssBrowser *browser)
 {
 	SceUID fd;
 	SceIoDirent ent;
-	char switch_name[32];
-	const char *switch_label;
+	int i;
 
 	browser->count = 0;
 	browser->truncated = 0;
 	browser->message[0] = '\0';
 
-	if (browser->path[0] == '\0') {
-		snprintf(browser->message, sizeof browser->message,
-		         "No ms0: or ef0: storage");
+	if (browser_at_roots(browser)) {
+		for (i = 0; i < browser->device_count && browser->count < SSS_LIST_MAX; i++) {
+			snprintf(browser->entries[browser->count].name, SSS_NAME_MAX, "%s",
+			         browser->devices[i].label);
+			browser->entries[browser->count].is_dir = 3;
+			browser->count++;
+		}
+		if (browser->count == 0)
+			snprintf(browser->message, sizeof browser->message,
+			         "No ms0: or ef0: storage");
+		if (browser->cursor < 0)
+			browser->cursor = 0;
+		if (browser->count == 0)
+			browser->cursor = 0;
+		else if (browser->cursor >= browser->count)
+			browser->cursor = browser->count - 1;
 		return;
 	}
 
@@ -157,19 +134,6 @@ void browser_reload(SssBrowser *browser)
 		memset(&ent, 0, sizeof ent);
 	}
 	sceIoDclose(fd);
-
-	switch_name[0] = '\0';
-	if (sss_path_is_root(browser->path)) {
-		switch_label = other_label(browser);
-		if (switch_label)
-			snprintf(switch_name, sizeof switch_name, "%s", switch_label);
-	}
-	if (switch_name[0] != '\0' && browser->count < SSS_LIST_MAX) {
-		snprintf(browser->entries[browser->count].name, SSS_NAME_MAX,
-		         ">> %s", switch_name);
-		browser->entries[browser->count].is_dir = 2;
-		browser->count++;
-	}
 
 	if (browser->count > 1)
 		qsort(browser->entries, (size_t)browser->count, sizeof(SssEntry),
@@ -216,12 +180,16 @@ void browser_init(SssBrowser *browser, const char *launched_from)
 		}
 	}
 
+	browser->path[0] = '\0';
+	browser_reload(browser);
 	if (browser->device_count == 0) {
 		snprintf(browser->message, sizeof browser->message,
 		         "No ms0: or ef0: storage");
 		return;
 	}
-	enter_device(browser);
+	browser->cursor = browser->device_index;
+	if (browser->cursor < 0 || browser->cursor >= browser->count)
+		browser->cursor = 0;
 }
 
 void browser_move(SssBrowser *browser, int delta)
@@ -247,11 +215,14 @@ int browser_open(SssBrowser *browser)
 		return 0;
 	entry = &browser->entries[browser->cursor];
 
-	if (entry->is_dir == 2) {
-		if (browser->device_count < 2)
+	if (entry->is_dir == 3) {
+		if (browser->cursor < 0 || browser->cursor >= browser->device_count)
 			return 0;
-		browser->device_index = (browser->device_index + 1) % browser->device_count;
-		enter_device(browser);
+		browser->device_index = browser->cursor;
+		snprintf(browser->path, sizeof browser->path, "%s/",
+		         browser->devices[browser->device_index].id);
+		browser->cursor = 0;
+		browser_reload(browser);
 		return 1;
 	}
 
@@ -273,8 +244,18 @@ int browser_up(SssBrowser *browser)
 	char previous[SSS_NAME_MAX];
 	int i;
 
-	if (browser->device_count <= 0 || sss_path_is_root(browser->path))
+	if (browser->device_count <= 0 || browser_at_roots(browser))
 		return 0;
+
+	if (sss_path_is_root(browser->path)) {
+		int device = browser->device_index;
+		browser->path[0] = '\0';
+		browser_reload(browser);
+		browser->cursor = device;
+		if (browser->cursor < 0 || browser->cursor >= browser->count)
+			browser->cursor = 0;
+		return 1;
+	}
 
 	sss_path_basename(browser->path, previous, sizeof previous);
 	if (!sss_path_parent(browser->path))
