@@ -1,0 +1,27 @@
+# Binaries / build
+*.o
+*.elf
+*.prx
+*.pbp
+*.PBP
+EBOOT.PBP
+SSSPlayer
+SSSPlayer.elf
+SSSPlayer.prx
+PARAM.SFO
+build/
+dist/
+.deps/
+
+# IDE / OS
+.DS_Store
+.vscode/
+.idea/
+*.swp
+*~
+
+# Toolchain / secrets
+.env
+.env.*
+*.pem
+*.key
