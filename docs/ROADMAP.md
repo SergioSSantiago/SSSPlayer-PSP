@@ -1,15 +1,16 @@
 # Roadmap
 
-## M0 — scaffold (now)
+## M0 — scaffold
 
-- [x] Repo + Makefile + GU bootstrap
-- [ ] Confirm `pspdev` build → `EBOOT.PBP` on device / PPSSPP
+- [x] Repo + Makefile + EBOOT bootstrap
+- [x] `pspdev` build produces `EBOOT.PBP`
+- [ ] Confirm the EBOOT on a PSP, a PSP Go, and PPSSPP
 
 ## M1 — audio MVP
 
-- [ ] Scan `ms0:/MUSIC` (and fallbacks)
-- [ ] MP3 decode + `sceAudio`
-- [ ] Now Playing: play / pause / seek / next
+- [x] Browse `ms0:` and `ef0:`, preferring `MUSIC` then `MP3`
+- [x] MP3 decode (`sceMp3`) + `sceAudioSRC`
+- [x] Now Playing: play / pause / seek / next
 
 ## M2 — polish
 

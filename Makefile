@@ -1,27 +1,35 @@
 TARGET = SSSPlayer
-OBJS = src/main.o
+OBJS = src/path.o src/browser.o src/player.o src/main.o
 
-# PSPSDK Makefile fragment (requires pspdev on PATH)
+# Prefer psp-config already on PATH. Otherwise use ~/pspdev.
+ifeq ($(shell psp-config --pspsdk-path 2>/dev/null),)
+  ifneq ($(wildcard $(HOME)/pspdev/bin/psp-config),)
+    PSPDEV ?= $(HOME)/pspdev
+    export PSPDEV
+    export PATH := $(PSPDEV)/bin:$(PATH)
+  endif
+endif
+
 PSPSDK ?= $(shell psp-config --pspsdk-path 2>/dev/null)
+ifeq ($(PSPDEV),)
+  PSPDEV := $(shell psp-config --pspdev-path 2>/dev/null)
+  export PSPDEV
+endif
 
-CFLAGS = -O2 -G0 -Wall -Iinclude
+CFLAGS = -O2 -G0 -Wall -Wextra -Iinclude
 CXXFLAGS = $(CFLAGS)
 ASFLAGS = $(CFLAGS)
-LIBS = -lpspgu -lpspgum -lpspdisplay -lpspaudio -lpspctrl -lpsppower -lm
+LIBS = -lpspmp3 -lpspaudio -lpsppower -lpsputility -lm
 
 EXTRA_TARGETS = EBOOT.PBP
 PSP_EBOOT_TITLE = SSSPlayer
-PSP_EBOOT_ICON =
+PSP_FW_VERSION = 600
 
 ifeq ($(PSPSDK),)
-$(warning PSPSDK not found. Install pspdev, then: export PATH=\"$$PSPDEV/bin:$$PATH\")
+$(warning PSPSDK not found. Install pspdev, then: export PATH="$$PSPDEV/bin:$$PATH")
 all:
 	@echo "PSPSDK missing — cannot build yet. See README.md"
 	@exit 1
 else
 include $(PSPSDK)/lib/build.mak
 endif
-
-.PHONY: clean-extra
-clean-extra:
-	rm -f $(OBJS) $(TARGET).elf $(TARGET).prx EBOOT.PBP PARAM.SFO
