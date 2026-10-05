@@ -119,14 +119,14 @@ void browser_reload(SssBrowser *browser)
 
 	if (browser->path[0] == '\0') {
 		snprintf(browser->message, sizeof browser->message,
-		         "No hay memoria ms0: ni ef0:");
+		         "No ms0: or ef0: storage");
 		return;
 	}
 
 	fd = sceIoDopen(browser->path);
 	if (fd < 0) {
 		snprintf(browser->message, sizeof browser->message,
-		         "No se puede abrir la carpeta");
+		         "Cannot open folder");
 		return;
 	}
 
@@ -183,10 +183,10 @@ void browser_reload(SssBrowser *browser)
 		browser->cursor = browser->count - 1;
 
 	if (browser->count == 0)
-		snprintf(browser->message, sizeof browser->message, "Carpeta vacia");
+		snprintf(browser->message, sizeof browser->message, "Empty folder");
 	else if (browser->truncated)
 		snprintf(browser->message, sizeof browser->message,
-		         "Lista recortada a %d entradas", SSS_LIST_MAX);
+		         "List capped at %d entries", SSS_LIST_MAX);
 }
 
 void browser_init(SssBrowser *browser, const char *launched_from)
@@ -195,7 +195,7 @@ void browser_init(SssBrowser *browser, const char *launched_from)
 	int i;
 
 	memset(browser, 0, sizeof *browser);
-	add_device(browser, "ef0:", "Interna (PSP Go)");
+	add_device(browser, "ef0:", "Internal (PSP Go)");
 	add_device(browser, "ms0:", "Memory Stick");
 
 	launch_dev[0] = '\0';
@@ -218,7 +218,7 @@ void browser_init(SssBrowser *browser, const char *launched_from)
 
 	if (browser->device_count == 0) {
 		snprintf(browser->message, sizeof browser->message,
-		         "No hay memoria ms0: ni ef0:");
+		         "No ms0: or ef0: storage");
 		return;
 	}
 	enter_device(browser);

@@ -4,7 +4,7 @@ Music and media player for **PlayStation Portable Go** (and classic PSP), by Ser
 
 Sister project of [SSSPlayer for PS Vita](https://github.com/SergioSSantiago/SSSPlayer). Same idea, different console: a focused player that reaches your media on the device storage, plays audio (and later video), and stays usable on the PSP’s limited hardware.
 
-> **Status:** 0.1.0 plays MP3 from the file browser on PSP and PSP Go (same `EBOOT.PBP`).
+> **Status:** 0.1.1 plays MP3 from the file browser on PSP and PSP Go (same `EBOOT.PBP`).
 
 ## Why this port
 
@@ -44,7 +44,7 @@ The accept button follows the system X/O setting.
 | Select | Pause | Pause |
 | Start | Quit | Quit |
 
-On PSP Go, from the root of one memory, `>> Interna (PSP Go)` or `>> Memory Stick` switches to the other. Put files in `ef0:/MUSIC` or `ms0:/MUSIC`.
+On PSP Go, from the root of one memory, `>> Internal (PSP Go)` or `>> Memory Stick` switches to the other. Put files in `ef0:/MUSIC` or `ms0:/MUSIC`.
 
 YouTube / heavy network features from the Vita app are **out of scope** for early PSP builds.
 

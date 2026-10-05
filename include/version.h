@@ -1,7 +1,7 @@
 #ifndef SSSPLAYER_VERSION_H
 #define SSSPLAYER_VERSION_H
 
-#define SSSPLAYER_PSP_VERSION "0.1.0"
+#define SSSPLAYER_PSP_VERSION "0.1.1"
 #define SSSPLAYER_PSP_NAME "SSSPlayer"
 
 #endif

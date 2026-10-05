@@ -249,14 +249,14 @@ static int open_current(void)
 
 	g_fd = sceIoOpen(full, PSP_O_RDONLY, 0777);
 	if (g_fd < 0) {
-		publish(SSS_PLAY_STOPPED, name, "No se pudo abrir", 0, 0);
+		publish(SSS_PLAY_STOPPED, name, "Could not open", 0, 0);
 		return -1;
 	}
 
 	size = sceIoLseek(g_fd, 0, PSP_SEEK_END);
 	if (size <= 0) {
 		audio_close();
-		publish(SSS_PLAY_STOPPED, name, "Archivo vacio", 0, 0);
+		publish(SSS_PLAY_STOPPED, name, "Empty file", 0, 0);
 		return -1;
 	}
 
@@ -269,7 +269,7 @@ static int open_current(void)
 	if (status < 0) {
 		char err[96];
 		audio_close();
-		snprintf(err, sizeof err, "MP3 no valido %08X", (unsigned)status);
+		snprintf(err, sizeof err, "Invalid MP3 %08X", (unsigned)status);
 		publish(SSS_PLAY_STOPPED, name, err, 0, 0);
 		return -1;
 	}
@@ -445,7 +445,7 @@ static void cmd_next(void)
 		char name[SSS_NAME_MAX];
 		snprintf(name, sizeof name, "%s", g_pl_index >= 0 ? g_pl_names[g_pl_index] : "");
 		audio_close();
-		publish(SSS_PLAY_STOPPED, name, "Fin de la lista", g_duration, g_duration);
+		publish(SSS_PLAY_STOPPED, name, "End of playlist", g_duration, g_duration);
 		return;
 	}
 	g_pl_index++;
@@ -591,7 +591,7 @@ int player_init(void)
 	                               THREAD_ATTR_USER, NULL);
 	if (g_thid < 0) {
 		sceMp3TermResource();
-		set_init_error("Sin hilo de audio");
+		set_init_error("No audio thread");
 		return g_thid;
 	}
 	status = sceKernelStartThread(g_thid, 0, NULL);
@@ -599,7 +599,7 @@ int player_init(void)
 		sceKernelDeleteThread(g_thid);
 		g_thid = -1;
 		sceMp3TermResource();
-		set_init_error("Audio no arranco");
+		set_init_error("Audio did not start");
 		return status;
 	}
 

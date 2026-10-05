@@ -124,14 +124,14 @@ static void draw_status_line(int y, const SssPlayStatus *st)
 		return;
 	}
 	if (st->state == SSS_PLAY_STOPPED && st->name[0] == '\0') {
-		draw_at(0, y, COL_DIM, "Sin reproduccion");
+		draw_at(0, y, COL_DIM, "Nothing playing");
 		return;
 	}
 
 	fmt_time(pos, sizeof pos, st->position_sec);
 	sss_path_tail(name, sizeof name, st->name, 32);
 	if (st->state == SSS_PLAY_PAUSED)
-		snprintf(line, sizeof line, "Pausa  %s  %s", pos, name);
+		snprintf(line, sizeof line, "Paused %s  %s", pos, name);
 	else if (st->state == SSS_PLAY_PLAYING)
 		snprintf(line, sizeof line, "Play   %s  %s", pos, name);
 	else
@@ -148,7 +148,7 @@ static void draw_browser(const SssPlayStatus *st, const char *accept,
 	int i;
 	int pct;
 
-	sss_path_tail(shown, sizeof shown, g_browser.path[0] ? g_browser.path : "(sin memoria)", 58);
+	sss_path_tail(shown, sizeof shown, g_browser.path[0] ? g_browser.path : "(no storage)", 58);
 	draw_at(0, 1, COL_TEXT, shown);
 
 	if (g_browser.message[0])
@@ -192,10 +192,10 @@ static void draw_browser(const SssPlayStatus *st, const char *accept,
 
 	draw_status_line(21, st);
 
-	snprintf(line, sizeof line, "%s abrir   %s subir   Tri ahora   Start salir",
+	snprintf(line, sizeof line, "%s open   %s back   Tri now   Start quit",
 	         accept, back);
 	draw_at(0, 23, COL_DIM, line);
-	draw_at(0, 24, COL_DIM, "L/R tema   Select pausa   Izq/Der 10s");
+	draw_at(0, 24, COL_DIM, "L/R track   Select pause   Left/Right 10s");
 
 	pct = -1;
 	if (scePowerIsBatteryExist() == 1)
@@ -217,14 +217,14 @@ static void draw_now(const SssPlayStatus *st, const char *accept, const char *ba
 	const char *state;
 
 	if (st->state == SSS_PLAY_PAUSED)
-		state = "En pausa";
+		state = "Paused";
 	else if (st->state == SSS_PLAY_PLAYING)
-		state = "Ahora suena";
+		state = "Now playing";
 	else
-		state = "Detenido";
+		state = "Stopped";
 
 	draw_at(0, 2, COL_TEXT, state);
-	sss_path_tail(line, sizeof line, st->name[0] ? st->name : "(ningun tema)", 60);
+	sss_path_tail(line, sizeof line, st->name[0] ? st->name : "(no track)", 60);
 	draw_at(0, 4, COL_PICK, line);
 
 	fmt_time(pos, sizeof pos, st->position_sec);
@@ -254,10 +254,10 @@ static void draw_now(const SssPlayStatus *st, const char *accept, const char *ba
 	if (st->error[0])
 		draw_at(0, 10, COL_ERR, st->error);
 
-	snprintf(line, sizeof line, "%s pausa   %s stop   Tri archivos", accept, back);
+	snprintf(line, sizeof line, "%s pause   %s stop   Tri files", accept, back);
 	draw_at(0, 22, COL_DIM, line);
-	draw_at(0, 23, COL_DIM, "Izq/Der 10s   L anterior   R siguiente");
-	draw_at(0, 24, COL_DIM, "Select pausa   Start salir");
+	draw_at(0, 23, COL_DIM, "Left/Right 10s   L prev   R next");
+	draw_at(0, 24, COL_DIM, "Select pause   Start quit");
 }
 
 static void play_selection(void)
@@ -377,7 +377,7 @@ int main(int argc, char *argv[])
 	pspDebugScreenSetTextColor(COL_TEXT);
 	pspDebugScreenClear();
 	draw_at(0, 0, COL_TEXT, SSSPLAYER_PSP_NAME);
-	draw_at(0, 2, COL_DIM, "Cargando...");
+	draw_at(0, 2, COL_DIM, "Loading...");
 
 	sceCtrlSetSamplingCycle(0);
 	sceCtrlSetSamplingMode(PSP_CTRL_MODE_ANALOG);
