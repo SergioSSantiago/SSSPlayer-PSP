@@ -173,13 +173,17 @@ static void draw_brackets(int x, int y, int size)
 
 static void draw_header(const char *scene)
 {
+	const char *by = "by SergioSSantiago";
 	char bat[8];
 	int pct = -1;
+	int title_w;
 
 	ui_fill(0, 0, UI_W, 36, UI_SURFACE);
 	draw_brackets(8, 6, 24);
 	ui_logo(8, 6, 24);
 	ui_text(40, 6, 1, UI_TEXT, "SSSPlayer");
+	title_w = ui_text_px("SSSPlayer", 1);
+	ui_text(40 + title_w + 8, 6, 1, UI_WARM, by);
 	ui_text(40, 20, 1, UI_DIM, scene);
 	ui_fill(0, 35, UI_W, 1, UI_MUTED);
 	ui_fill(300, 34, 120, 2, UI_TEXT);
@@ -189,7 +193,7 @@ static void draw_header(const char *scene)
 		pct = scePowerGetBatteryLifePercent();
 	if (pct >= 0 && pct <= 100) {
 		snprintf(bat, sizeof bat, "%d%%", pct);
-		ui_text(UI_W - 8 - ui_text_px(bat, 1), 14, 1, UI_DIM, bat);
+		ui_text(UI_W - 8 - ui_text_px(bat, 1), 20, 1, UI_DIM, bat);
 	}
 }
 
