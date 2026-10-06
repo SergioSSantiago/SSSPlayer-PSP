@@ -11,9 +11,17 @@
 #define BUF_WIDTH 512
 #define FRAME_SIZE (BUF_WIDTH * UI_H * 4)
 
+/* From sceDisplay_driver (see display_bright.S). */
+void sceDisplayDisable(void);
+void sceDisplayEnable(void);
+void sceDisplaySetBrightness(int level, int unk1);
+void sceDisplayGetBrightness(int *level, int *unk1);
+
 static unsigned int __attribute__((aligned(16))) list[262144];
 static unsigned int __attribute__((aligned(16))) font_tex[128 * 64];
 static int font_ready;
+static int g_saved_bright = -1;
+static int g_lcd_hw_off;
 
 typedef struct Vertex {
 	float u, v;
@@ -109,13 +117,39 @@ void ui_init(void)
 
 void ui_shutdown(void)
 {
-	sceGuDisplay(GU_TRUE);
+	ui_display(1);
 	sceGuTerm();
 }
 
 void ui_display(int on)
 {
-	sceGuDisplay(on ? GU_TRUE : GU_FALSE);
+	if (on) {
+		if (g_lcd_hw_off) {
+			sceDisplayEnable();
+			g_lcd_hw_off = 0;
+		}
+		if (g_saved_bright >= 0) {
+			sceDisplaySetBrightness(g_saved_bright, 0);
+			g_saved_bright = -1;
+		}
+		sceGuDisplay(GU_TRUE);
+	} else {
+		int level = 0;
+		int unk = 0;
+
+		/* GuDisplay(false) only blanks the framebuffer — backlight stays
+		 * on. Brightness 0 + DisplayDisable turn the LCD/backlight off. */
+		if (g_saved_bright < 0) {
+			sceDisplayGetBrightness(&level, &unk);
+			g_saved_bright = (level > 0 && level <= 100) ? level : 50;
+		}
+		sceDisplaySetBrightness(0, 0);
+		sceGuDisplay(GU_FALSE);
+		if (!g_lcd_hw_off) {
+			sceDisplayDisable();
+			g_lcd_hw_off = 1;
+		}
+	}
 }
 
 void ui_begin(void)

@@ -1,5 +1,5 @@
 TARGET = SSSPlayer
-OBJS = src/path.o src/browser.o src/player.o src/ui.o src/mp4.o src/video.o src/mpeg_nal.o src/main.o
+OBJS = src/path.o src/browser.o src/player.o src/ui.o src/mp4.o src/video.o src/mpeg_nal.o src/display_bright.o src/main.o
 
 # Prefer psp-config already on PATH. Otherwise use ~/pspdev.
 ifeq ($(shell psp-config --pspsdk-path 2>/dev/null),)
