@@ -19,12 +19,14 @@ static int dir_exists(const char *path)
 
 static int entry_rank(int kind)
 {
-	/* Directories first, then MP3, then other files (video, etc.). */
+	/* Directories first, then MP3, then video, then other files. */
 	if (kind == 1 || kind == 3)
 		return 0;
 	if (kind == 0)
 		return 1;
-	return 2;
+	if (kind == 4)
+		return 2;
+	return 3;
 }
 
 static int cmp_entry(const void *va, const void *vb)
@@ -130,6 +132,8 @@ void browser_reload(SssBrowser *browser)
 			browser->entries[browser->count].is_dir = 1;
 		else if (sss_path_is_mp3(ent.d_name))
 			browser->entries[browser->count].is_dir = 0;
+		else if (sss_path_is_video(ent.d_name))
+			browser->entries[browser->count].is_dir = 4;
 		else
 			browser->entries[browser->count].is_dir = 2;
 		browser->count++;
@@ -241,9 +245,14 @@ int browser_open(SssBrowser *browser)
 		return 2;
 	}
 
+	if (entry->is_dir == 4 && sss_path_is_video(entry->name)) {
+		browser->message[0] = '\0';
+		return 3;
+	}
+
 	if (entry->is_dir == 2) {
 		snprintf(browser->message, sizeof browser->message,
-		         "Only MP3 audio for now");
+		         "Not a supported media file");
 		return 0;
 	}
 	return 0;

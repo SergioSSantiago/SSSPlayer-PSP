@@ -15,10 +15,10 @@
 ## M2 — polish
 
 - [ ] M3U playlists
-- [ ] Simple UI theme
-- [ ] Sleep / power considerations on PSP Go
+- [x] Simple UI theme (Terminus)
+- [x] Sleep / power: block auto-suspend + PowerLock while playing; black screen via HOLD/Square
 
 ## M3 — media later
 
-- [ ] Local video via Media Engine where viable
+- [ ] Local video via Media Engine (`sceMpeg` / H.264) for MP4 and related
 - [ ] Optional network only if stable on Wi‑Fi PSP Go

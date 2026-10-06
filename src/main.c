@@ -32,10 +32,14 @@ PSP_HEAP_SIZE_KB(8192);
 static volatile int g_running = 1;
 static int g_cross_accept = 1;
 static int g_view_now;
+static int g_view_video;
+static int g_blank_manual;
+static int g_power_locked;
 static int g_list_top;
 static int g_clock_fast;
 static SssBrowser g_browser;
 static char g_names[SSS_PL_MAX][SSS_NAME_MAX];
+static char g_video_name[SSS_NAME_MAX];
 
 static int exit_callback(int arg1, int arg2, void *common)
 {
@@ -87,6 +91,7 @@ static void fmt_time(char *dst, size_t n, int sec)
 
 static void update_power(const SssPlayStatus *st)
 {
+	int audio_on = st->state == SSS_PLAY_PLAYING || st->state == SSS_PLAY_PAUSED;
 	int want_fast = st->state == SSS_PLAY_PLAYING;
 
 	if (want_fast != g_clock_fast) {
@@ -96,11 +101,18 @@ static void update_power(const SssPlayStatus *st)
 			scePowerSetClockFrequency(222, 222, 111);
 		g_clock_fast = want_fast;
 	}
-	/* While audio is active, block auto-suspend only. Do not tick DISPLAY,
-	 * so the backlight can still turn off / the Go lid can close without
-	 * forcing the screen to stay lit. */
-	if (st->state == SSS_PLAY_PLAYING || st->state == SSS_PLAY_PAUSED)
+	/* Block auto-suspend and the Power-button sleep while audio is active.
+	 * Do not tick DISPLAY so the panel can go black. */
+	if (audio_on) {
 		scePowerTick(PSP_POWER_TICK_SUSPEND);
+		if (!g_power_locked) {
+			scePowerLock(0);
+			g_power_locked = 1;
+		}
+	} else if (g_power_locked) {
+		scePowerUnlock(0);
+		g_power_locked = 0;
+	}
 }
 
 static void draw_brackets(int x, int y, int size)
@@ -236,6 +248,12 @@ static void draw_browser(const SssPlayStatus *st, const char *accept,
 			color = UI_TEXT;
 			sss_path_tail(shown, sizeof shown, entry->name, 40);
 			snprintf(label, sizeof label, "%s/", shown);
+		} else if (entry->is_dir == 4) {
+			color = UI_DIM;
+			sss_path_tail(shown, sizeof shown, entry->name, 36);
+			snprintf(label, sizeof label, "%s", shown);
+			ui_text(UI_W - 16 - ui_text_px("video", 1), y + 6, 1, UI_MUTED,
+			        "video");
 		} else if (entry->is_dir == 2) {
 			color = UI_DIM;
 			sss_path_tail(shown, sizeof shown, entry->name, 40);
@@ -253,8 +271,9 @@ static void draw_browser(const SssPlayStatus *st, const char *accept,
 	}
 
 	draw_mini(st);
-	snprintf(hint, sizeof hint, "%s open   %s back   Triangle now   Start quit",
-	         accept, back);
+	snprintf(hint, sizeof hint,
+	         "%s open  %s back  Square black  Triangle now  Start", accept,
+	         back);
 	draw_hint(hint);
 }
 
@@ -334,6 +353,30 @@ static void draw_splash(void)
 	ui_end();
 }
 
+static void draw_video_stub(const char *back)
+{
+	char shown[48];
+	char hint[80];
+
+	draw_header("Video");
+	sss_path_tail(shown, sizeof shown, g_video_name, 40);
+	ui_text(24, 70, 1, UI_TEXT, shown);
+	ui_fill(24, 100, UI_W - 48, 90, UI_SURFACE);
+	ui_text(40, 118, 1, UI_WARM, "Video decode is not ready yet.");
+	ui_text(40, 140, 1, UI_DIM, "MP4 needs the PSP Media Engine");
+	ui_text(40, 156, 1, UI_DIM, "path. That is the next milestone.");
+	ui_text(40, 180, 1, UI_MUTED, "Audio MP3 works now.");
+	snprintf(hint, sizeof hint, "%s back   Start quit", back);
+	draw_hint(hint);
+}
+
+static void draw_blank(void)
+{
+	ui_begin();
+	ui_fill(0, 0, UI_W, UI_H, 0xFF000000);
+	ui_end();
+}
+
 static void play_selection(void)
 {
 	int start = -1;
@@ -372,8 +415,12 @@ static void handle_input(unsigned int buttons, unsigned int prev)
 		g_running = 0;
 		return;
 	}
-	if (pressed & PSP_CTRL_TRIANGLE)
+	if (pressed & PSP_CTRL_SQUARE)
+		g_blank_manual = !g_blank_manual;
+	if (pressed & PSP_CTRL_TRIANGLE) {
+		g_view_video = 0;
 		g_view_now = !g_view_now;
+	}
 	if (pressed & PSP_CTRL_SELECT)
 		player_toggle_pause();
 	if (pressed & PSP_CTRL_LTRIGGER)
@@ -420,6 +467,12 @@ static void handle_input(unsigned int buttons, unsigned int prev)
 	if (!pressed_accept(pressed) && !pressed_back(pressed))
 		return;
 
+	if (g_view_video) {
+		if (pressed_back(pressed) || pressed_accept(pressed))
+			g_view_video = 0;
+		return;
+	}
+
 	if (g_view_now) {
 		if (pressed_accept(pressed))
 			player_toggle_pause();
@@ -436,6 +489,12 @@ static void handle_input(unsigned int buttons, unsigned int prev)
 		int action = browser_open(&g_browser);
 		if (action == 2)
 			play_selection();
+		else if (action == 3) {
+			const SssEntry *entry = &g_browser.entries[g_browser.cursor];
+			snprintf(g_video_name, sizeof g_video_name, "%s", entry->name);
+			g_view_video = 1;
+			g_view_now = 0;
+		}
 	}
 }
 
@@ -482,19 +541,39 @@ int main(int argc, char *argv[])
 		sceCtrlReadBufferPositive(&pad, 1);
 		player_get_status(&status);
 		update_power(&status);
-		handle_input(pad.Buttons, prev_buttons);
+		/* HOLD locks buttons (system) and we draw a full black frame. */
+		if (!(pad.Buttons & PSP_CTRL_HOLD))
+			handle_input(pad.Buttons, prev_buttons);
 		prev_buttons = pad.Buttons;
 		if (!g_running)
 			break;
 
+		{
+			int audio_on = status.state == SSS_PLAY_PLAYING ||
+			               status.state == SSS_PLAY_PAUSED;
+			int blank = (pad.Buttons & PSP_CTRL_HOLD) != 0 ||
+			            (g_blank_manual && audio_on);
+
+			if (blank) {
+				draw_blank();
+				continue;
+			}
+		}
+
 		ui_begin();
-		if (g_view_now)
+		if (g_view_video)
+			draw_video_stub(back);
+		else if (g_view_now)
 			draw_now(&status, accept, back);
 		else
 			draw_browser(&status, accept, back);
 		ui_end();
 	}
 
+	if (g_power_locked) {
+		scePowerUnlock(0);
+		g_power_locked = 0;
+	}
 	player_shutdown();
 	scePowerSetClockFrequency(222, 222, 111);
 	ui_shutdown();

@@ -65,24 +65,44 @@ void sss_path_join(char *dst, size_t dst_n, const char *dir, const char *name)
 		snprintf(dst, dst_n, "%s%s", dir, name);
 }
 
-int sss_path_is_mp3(const char *name)
+static int match_ext(const char *name, const char *ext)
 {
 	size_t n;
-	const char *ext;
+	size_t el;
+	size_t i;
 
-	if (!name)
+	if (!name || !ext)
 		return 0;
 	n = strlen(name);
-	if (n < 4)
+	el = strlen(ext);
+	if (n < el + 1)
 		return 0;
-	ext = name + n - 4;
-	if (ext[0] != '.')
+	if (name[n - el - 1] != '.')
 		return 0;
-	if (ext[1] != 'm' && ext[1] != 'M')
-		return 0;
-	if (ext[2] != 'p' && ext[2] != 'P')
-		return 0;
-	return ext[3] == '3';
+	for (i = 0; i < el; i++) {
+		char a = name[n - el + i];
+		char b = ext[i];
+		if (a >= 'A' && a <= 'Z')
+			a = (char)(a - 'A' + 'a');
+		if (b >= 'A' && b <= 'Z')
+			b = (char)(b - 'A' + 'a');
+		if (a != b)
+			return 0;
+	}
+	return 1;
+}
+
+int sss_path_is_mp3(const char *name)
+{
+	return match_ext(name, "mp3");
+}
+
+int sss_path_is_video(const char *name)
+{
+	return match_ext(name, "mp4") || match_ext(name, "m4v") ||
+	       match_ext(name, "avi") || match_ext(name, "mpg") ||
+	       match_ext(name, "mpeg") || match_ext(name, "pmf") ||
+	       match_ext(name, "pmp");
 }
 
 void sss_path_basename(const char *path, char *dst, size_t dst_n)

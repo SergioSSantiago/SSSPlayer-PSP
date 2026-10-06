@@ -58,6 +58,10 @@ int main(void)
 	expect(!sss_path_is_mp3("tema.ogg"), "ogg");
 	expect(!sss_path_is_mp3("mp3"), "no dot");
 	expect(!sss_path_is_mp3("tema.mp3.bak"), "bak");
+	expect(sss_path_is_video("clip.mp4"), "mp4");
+	expect(sss_path_is_video("CLIP.MP4"), "MP4 upper");
+	expect(sss_path_is_video("a.mpeg"), "mpeg");
+	expect(!sss_path_is_video("tema.mp3"), "mp3 not video");
 
 	sss_path_basename("ef0:/MUSIC/a.mp3", base, sizeof base);
 	expect_str(base, "a.mp3", "basename file");

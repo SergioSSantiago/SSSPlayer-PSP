@@ -427,7 +427,8 @@ static int decode_frame(void)
 			if (fill_stream() > 0)
 				bytes = sceMp3Decode(g_handle, &pcm);
 		}
-		if (bytes < 0)
+		/* 0x80671402 is EOF (negative as int). Never treat it as a hard error. */
+		if (bytes < 0 && !is_eof(bytes))
 			return bytes;
 		if (!is_eof(bytes) && pcm) {
 			samples = bytes / (2 * g_channels);
@@ -601,12 +602,22 @@ static int audio_thread(SceSize args, void *argp)
 		if (decoded == 0)
 			cmd_next();
 		else if (decoded < 0 && g_handle >= 0) {
-			char err[96];
-			char name[SSS_NAME_MAX];
-			snprintf(name, sizeof name, "%s", g_pl_names[g_pl_index]);
-			snprintf(err, sizeof err, "Decode %08X", (unsigned)decoded);
-			audio_close(1);
-			publish(SSS_PLAY_STOPPED, name, err, 0, 0);
+			if (is_eof(decoded)) {
+				if (g_soft_eof > 0) {
+					g_soft_eof--;
+					refill_after_seek();
+					output_silence();
+				} else {
+					cmd_next();
+				}
+			} else {
+				char err[96];
+				char name[SSS_NAME_MAX];
+				snprintf(name, sizeof name, "%s", g_pl_names[g_pl_index]);
+				snprintf(err, sizeof err, "Decode %08X", (unsigned)decoded);
+				audio_close(1);
+				publish(SSS_PLAY_STOPPED, name, err, 0, 0);
+			}
 		}
 	}
 
@@ -742,6 +753,10 @@ void player_seek(int delta_sec)
 	if (g_cmd == CMD_NONE || g_cmd == CMD_SEEK) {
 		g_cmd = CMD_SEEK;
 		g_seek_delta += delta_sec;
+		if (g_seek_delta > 90)
+			g_seek_delta = 90;
+		if (g_seek_delta < -90)
+			g_seek_delta = -90;
 	}
 	unlock();
 }

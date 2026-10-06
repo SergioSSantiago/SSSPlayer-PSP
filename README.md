@@ -4,7 +4,7 @@ Music and media player for **PlayStation Portable Go** (and classic PSP), by Ser
 
 Sister project of [SSSPlayer for PS Vita](https://github.com/SergioSSantiago/SSSPlayer). Same idea, different console: a focused player that reaches your media on the device storage, plays audio (and later video), and stays usable on the PSP’s limited hardware.
 
-> **Status:** 0.1.5 plays MP3 from the file browser on PSP and PSP Go (same `EBOOT.PBP`). Other files (for example MP4) appear in the list but are not playable yet.
+> **Status:** 0.1.6 plays MP3 from the file browser on PSP and PSP Go (same `EBOOT.PBP`). Video files are listed; Media Engine decode is the next milestone.
 
 ## Why this port
 
@@ -42,6 +42,7 @@ The accept button follows the system X/O setting.
 | L / R | Previous / next track | Previous / next track |
 | Triangle | Now playing | Back to files |
 | Select | Pause | Pause |
+| Square | Black screen (music keeps playing) | Black screen |
 | Start | Quit | Quit |
 
 The browser opens on the storage list, the same idea as the Vita file screen: **Internal (PSP Go)** and **Memory Stick**. Open one, then open `MUSIC`. Put files in `ef0:/MUSIC` or `ms0:/MUSIC`.
@@ -73,13 +74,14 @@ Launch it from the XMB Games menu under CFW. The same file runs on PSP-1000/2000
 
 ### Listen with the PSP Go screen closed
 
-While a track is playing or paused, SSSPlayer blocks **auto-suspend** so idle sleep does not stop the music. It does **not** force the display to stay on.
+While a track is playing or paused, SSSPlayer:
 
-On PSP Go, also set:
+- Blocks **auto-suspend** and locks the Power button sleep (`scePowerLock`)
+- Draws a **full black** frame when **HOLD** is on, or when you press **Square**
 
-**Settings → System Settings → Display Panel Close Options → Standard**
+Typical flow: start a track → press **Square** (or slide HOLD) → close the panel → music continues on a black screen. Move HOLD off / press Square again to show the UI.
 
-(not **Enter Sleep Mode**). Then close the slide while music plays. If that option is Sleep Mode, closing the panel suspends the whole system and audio stops — put the **HOLD** switch down before closing as a workaround, or change the setting to Standard.
+Also set **Settings → System Settings → Display Panel Close Options → Standard** (not Sleep Mode), so closing the slide does not suspend the whole system.
 
 ## Relation to Vita SSSPlayer
 
