@@ -4,7 +4,7 @@ Music and media player for **PlayStation Portable Go** (and classic PSP), by Ser
 
 Sister project of [SSSPlayer for PS Vita](https://github.com/SergioSSantiago/SSSPlayer). Same idea, different console: a focused player that reaches your media on the device storage, plays audio (and later video), and stays usable on the PSP’s limited hardware.
 
-> **Status:** 0.2.2 plays MP3 and H.264/MP4 video with AAC audio (≤480×272) on PSP and PSP Go (same `EBOOT.PBP`).
+> **Status:** 0.2.3 plays MP3 and H.264/MP4 video with AAC audio (≤480×272) on PSP and PSP Go (same `EBOOT.PBP`).
 
 ## Why this port
 
@@ -46,7 +46,7 @@ The accept button follows the system X/O setting.
 | Square | Toggle LCD off (music keeps playing) | Toggle LCD off |
 | Start | Quit | Quit |
 
-The browser opens on the storage list, the same idea as the Vita file screen: **Internal (PSP Go)** and **Memory Stick**. Open one, then open `MUSIC` or `VIDEO`. Put MP3s in `ef0:/MUSIC` or `ms0:/MUSIC`. The header shows the build version (e.g. `Files  0.2.2`) so you can confirm the installed EBOOT.
+The browser opens on the storage list, the same idea as the Vita file screen: **Internal (PSP Go)** and **Memory Stick**. Open one, then open `MUSIC` or `VIDEO`. Put MP3s in `ef0:/MUSIC` or `ms0:/MUSIC`. The header shows the build version (e.g. `Files  0.2.3`) so you can confirm the installed EBOOT.
 
 ### Video (H.264 / MP4)
 
@@ -81,13 +81,13 @@ Launch it from the XMB Games menu under CFW. The same file runs on PSP-1000/2000
 
 While a track is playing or paused, SSSPlayer:
 
-- Blocks **auto-suspend** and locks Power-button sleep (`scePowerLock`) so the console stays on
-- After ~1.5 s idle (or **Square** / **HOLD**), turns the **LCD off** with `sceGuDisplay(GU_FALSE)` — black screen, music continues
-- Any button wakes the UI again
+- Blocks **auto-suspend** and locks Power-button sleep (`scePowerLock`) so the console stays on and music continues
+- Turns the **LCD fully off** (`sceGuDisplay(GU_FALSE)`) when you **close the Go slide**, or when **HOLD** / **Square** is used — not after idle time
+- Opening the slide (or releasing HOLD / Square again) turns the LCD back on
 
-Typical flow: start a track → wait a moment (or press Square) → close the panel → music keeps playing on a dark screen. Press any button to show the UI.
+Typical flow: start a track → close the panel → LCD off, music keeps playing. Open the panel to see the UI again.
 
-Also set **Settings → System Settings → Display Panel Close Options → Standard** (not Sleep Mode), so closing the slide does not suspend the whole system.
+If closing the slide still sleeps the console, set **Settings → System Settings → Display Panel Close Options → Standard**. If the LCD stays lit with Standard, try **Enter Sleep Mode** instead: PowerLock keeps the console awake while the lid event turns the LCD off.
 
 ## Relation to Vita SSSPlayer
 

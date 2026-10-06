@@ -30,13 +30,17 @@ PSP_HEAP_SIZE_KB(20480);
 #define MSG_Y 204
 #define MINI_Y 222
 #define HINT_Y 258
+/* PSP Go slide-open bit (NewSlide). Not in the public enum; CFW often exposes it. */
+#define SSS_CTRL_SLIDE_OPEN 0x20000000u
 
 static volatile int g_running = 1;
+static volatile int g_panel_power_off;
 static int g_cross_accept = 1;
 static int g_view_now;
 static int g_blank_manual;
 static int g_display_off;
-static int g_idle_blank;
+static int g_is_go;
+static int g_slide_bit_seen;
 static int g_power_locked;
 static int g_list_top;
 static int g_clock_fast;
@@ -52,6 +56,20 @@ static int exit_callback(int arg1, int arg2, void *common)
 	return 0;
 }
 
+static int power_callback(int unknown, int pwrflags, void *common)
+{
+	(void)unknown;
+	(void)common;
+	/* Lid/power sleep request: we keep PowerLock so the console stays awake,
+	 * but use the event to turn the LCD off while music continues. */
+	if (pwrflags & (PSP_POWER_CB_POWER_SWITCH | PSP_POWER_CB_SUSPENDING |
+	                PSP_POWER_CB_STANDBY))
+		g_panel_power_off = 1;
+	if (pwrflags & (PSP_POWER_CB_RESUMING | PSP_POWER_CB_RESUME_COMPLETE))
+		g_panel_power_off = 0;
+	return 0;
+}
+
 static int callback_thread(SceSize args, void *argp)
 {
 	int cbid;
@@ -60,8 +78,33 @@ static int callback_thread(SceSize args, void *argp)
 	(void)argp;
 	cbid = sceKernelCreateCallback("Exit Callback", exit_callback, NULL);
 	sceKernelRegisterExitCallback(cbid);
+	cbid = sceKernelCreateCallback("Power Callback", power_callback, NULL);
+	scePowerRegisterCallback(0, cbid);
 	sceKernelSleepThreadCB();
 	return 0;
+}
+
+static void detect_psp_go(void)
+{
+	SceUID fd = sceIoDopen("ef0:/");
+
+	if (fd >= 0) {
+		sceIoDclose(fd);
+		g_is_go = 1;
+	}
+}
+
+static int go_slide_closed(unsigned int buttons)
+{
+	if (!g_is_go)
+		return 0;
+	if (buttons & SSS_CTRL_SLIDE_OPEN)
+		g_slide_bit_seen = 1;
+	/* Only trust the bit after we have seen it once (avoids always-off on
+	 * firmwares that never expose it to user mode). */
+	if (!g_slide_bit_seen)
+		return 0;
+	return (buttons & SSS_CTRL_SLIDE_OPEN) == 0;
 }
 
 static void setup_callbacks(void)
@@ -364,15 +407,8 @@ static void set_screen_off(int off)
 	if (off == g_display_off)
 		return;
 	g_display_off = off;
-	if (off) {
-		/* Black frame, then disable LCD — console stays awake via PowerLock. */
-		ui_begin();
-		ui_fill(0, 0, UI_W, UI_H, 0xFF000000);
-		ui_end();
-		ui_display(0);
-	} else {
-		ui_display(1);
-	}
+	/* Real LCD off (not a lit black framebuffer). Console stays awake. */
+	ui_display(off ? 0 : 1);
 }
 
 static void keep_screen_off(void)
@@ -408,7 +444,7 @@ static int pressed_back(unsigned int pressed)
 	return (pressed & PSP_CTRL_CROSS) != 0;
 }
 
-static void handle_input(unsigned int buttons, unsigned int prev, int audio_on)
+static void handle_input(unsigned int buttons, unsigned int prev)
 {
 	unsigned int pressed = buttons & ~prev;
 	static int up_hold;
@@ -422,14 +458,12 @@ static void handle_input(unsigned int buttons, unsigned int prev, int audio_on)
 		g_running = 0;
 		return;
 	}
-	if (pressed & PSP_CTRL_SQUARE) {
+	if (pressed & PSP_CTRL_SQUARE)
 		g_blank_manual = !g_blank_manual;
-		g_idle_blank = 0;
-	}
 	if (pressed & PSP_CTRL_TRIANGLE) {
 		g_view_now = !g_view_now;
 		g_blank_manual = 0;
-		g_idle_blank = 0;
+		g_panel_power_off = 0;
 	}
 	if (pressed & PSP_CTRL_SELECT)
 		player_toggle_pause();
@@ -468,9 +502,6 @@ static void handle_input(unsigned int buttons, unsigned int prev, int audio_on)
 		seek_cool = 18;
 	}
 
-	if (pressed && audio_on)
-		g_idle_blank = 0;
-
 	if (!pressed_accept(pressed) && !pressed_back(pressed))
 		return;
 
@@ -481,7 +512,7 @@ static void handle_input(unsigned int buttons, unsigned int prev, int audio_on)
 			player_stop();
 			g_view_now = 0;
 			g_blank_manual = 0;
-			g_idle_blank = 0;
+			g_panel_power_off = 0;
 		}
 		return;
 	}
@@ -498,7 +529,7 @@ static void handle_input(unsigned int buttons, unsigned int prev, int audio_on)
 			sss_path_join(full, sizeof full, g_browser.path, entry->name);
 			g_view_now = 0;
 			g_blank_manual = 0;
-			g_idle_blank = 0;
+			g_panel_power_off = 0;
 			set_screen_off(0);
 			video_play(full);
 		}
@@ -513,6 +544,7 @@ int main(int argc, char *argv[])
 	SceCtrlData pad;
 
 	setup_callbacks();
+	detect_psp_go();
 	ui_init();
 	draw_splash();
 
@@ -528,13 +560,17 @@ int main(int argc, char *argv[])
 
 	for (splash = 0; splash < 90 && g_running; splash++) {
 		sceCtrlReadBufferPositive(&pad, 1);
-		if (pad.Buttons)
+		if (pad.Buttons & ~SSS_CTRL_SLIDE_OPEN)
 			break;
+		if (pad.Buttons & SSS_CTRL_SLIDE_OPEN)
+			g_slide_bit_seen = 1;
 		draw_splash();
 	}
 	while (g_running) {
 		sceCtrlPeekBufferPositive(&pad, 1);
-		if (!pad.Buttons)
+		if (pad.Buttons & SSS_CTRL_SLIDE_OPEN)
+			g_slide_bit_seen = 1;
+		if (!(pad.Buttons & ~SSS_CTRL_SLIDE_OPEN))
 			break;
 		draw_splash();
 	}
@@ -545,6 +581,7 @@ int main(int argc, char *argv[])
 		const char *accept = g_cross_accept ? "X" : "O";
 		const char *back = g_cross_accept ? "O" : "X";
 		int audio_on;
+		int slide_closed;
 		int blank;
 
 		sceCtrlReadBufferPositive(&pad, 1);
@@ -552,25 +589,28 @@ int main(int argc, char *argv[])
 		update_power(&status);
 		audio_on = status.state == SSS_PLAY_PLAYING ||
 		           status.state == SSS_PLAY_PAUSED;
+		slide_closed = go_slide_closed(pad.Buttons);
+		if (!slide_closed && (pad.Buttons & SSS_CTRL_SLIDE_OPEN))
+			g_panel_power_off = 0;
 
-		/* HOLD locks buttons (system). While music plays, idle blank + Square
-		 * turn the LCD off so closing the Go panel stays dark without sleep. */
+		/* HOLD locks buttons (system) and turns the LCD off. */
 		if (!(pad.Buttons & PSP_CTRL_HOLD))
-			handle_input(pad.Buttons, prev_buttons, audio_on);
+			handle_input(pad.Buttons, prev_buttons);
 		prev_buttons = pad.Buttons;
 		if (!g_running)
 			break;
 
-		if (audio_on) {
-			if (g_idle_blank < 90)
-				g_idle_blank++;
-		} else {
-			g_idle_blank = 0;
+		if (!audio_on) {
 			g_blank_manual = 0;
+			g_panel_power_off = 0;
 		}
 
+		/* LCD off only on HOLD, Square, Go slide closed, or panel power event.
+		 * No idle auto-blank while the panel is open. */
 		blank = (pad.Buttons & PSP_CTRL_HOLD) != 0 ||
-		        (audio_on && (g_blank_manual || g_idle_blank >= 90));
+		        (audio_on && g_blank_manual) ||
+		        (audio_on && slide_closed) ||
+		        (audio_on && g_panel_power_off);
 
 		if (blank) {
 			keep_screen_off();
