@@ -20,5 +20,6 @@
 
 ## M3 — media later
 
-- [ ] Local video via Media Engine (`sceMpeg` / H.264) for MP4 and related
+- [x] Local H.264/MP4 via Media Engine NAL path (≤480×272; audio track next)
+- [ ] AAC / ATRAC audio while video plays
 - [ ] Optional network only if stable on Wi‑Fi PSP Go

@@ -7,6 +7,7 @@
 #include "sss_browser.h"
 #include "sss_player.h"
 #include "sss_ui.h"
+#include "sss_video.h"
 #include "version.h"
 
 #include <pspkernel.h>
@@ -20,7 +21,8 @@
 
 PSP_MODULE_INFO("SSSPlayer", 0, 1, 0);
 PSP_MAIN_THREAD_ATTR(THREAD_ATTR_USER | THREAD_ATTR_VFPU);
-PSP_HEAP_SIZE_KB(8192);
+/* Video decode needs a 4 MB aligned DDR workspace plus tables. */
+PSP_HEAP_SIZE_KB(20480);
 
 #define ROW_Y 60
 #define ROW_H 20
@@ -32,14 +34,12 @@ PSP_HEAP_SIZE_KB(8192);
 static volatile int g_running = 1;
 static int g_cross_accept = 1;
 static int g_view_now;
-static int g_view_video;
 static int g_blank_manual;
 static int g_power_locked;
 static int g_list_top;
 static int g_clock_fast;
 static SssBrowser g_browser;
 static char g_names[SSS_PL_MAX][SSS_NAME_MAX];
-static char g_video_name[SSS_NAME_MAX];
 
 static int exit_callback(int arg1, int arg2, void *common)
 {
@@ -353,23 +353,6 @@ static void draw_splash(void)
 	ui_end();
 }
 
-static void draw_video_stub(const char *back)
-{
-	char shown[48];
-	char hint[80];
-
-	draw_header("Video");
-	sss_path_tail(shown, sizeof shown, g_video_name, 40);
-	ui_text(24, 70, 1, UI_TEXT, shown);
-	ui_fill(24, 100, UI_W - 48, 90, UI_SURFACE);
-	ui_text(40, 118, 1, UI_WARM, "Video decode is not ready yet.");
-	ui_text(40, 140, 1, UI_DIM, "MP4 needs the PSP Media Engine");
-	ui_text(40, 156, 1, UI_DIM, "path. That is the next milestone.");
-	ui_text(40, 180, 1, UI_MUTED, "Audio MP3 works now.");
-	snprintf(hint, sizeof hint, "%s back   Start quit", back);
-	draw_hint(hint);
-}
-
 static void draw_blank(void)
 {
 	ui_begin();
@@ -417,10 +400,8 @@ static void handle_input(unsigned int buttons, unsigned int prev)
 	}
 	if (pressed & PSP_CTRL_SQUARE)
 		g_blank_manual = !g_blank_manual;
-	if (pressed & PSP_CTRL_TRIANGLE) {
-		g_view_video = 0;
+	if (pressed & PSP_CTRL_TRIANGLE)
 		g_view_now = !g_view_now;
-	}
 	if (pressed & PSP_CTRL_SELECT)
 		player_toggle_pause();
 	if (pressed & PSP_CTRL_LTRIGGER)
@@ -467,12 +448,6 @@ static void handle_input(unsigned int buttons, unsigned int prev)
 	if (!pressed_accept(pressed) && !pressed_back(pressed))
 		return;
 
-	if (g_view_video) {
-		if (pressed_back(pressed) || pressed_accept(pressed))
-			g_view_video = 0;
-		return;
-	}
-
 	if (g_view_now) {
 		if (pressed_accept(pressed))
 			player_toggle_pause();
@@ -491,9 +466,11 @@ static void handle_input(unsigned int buttons, unsigned int prev)
 			play_selection();
 		else if (action == 3) {
 			const SssEntry *entry = &g_browser.entries[g_browser.cursor];
-			snprintf(g_video_name, sizeof g_video_name, "%s", entry->name);
-			g_view_video = 1;
+			char full[SSS_PATH_MAX];
+			sss_path_join(full, sizeof full, g_browser.path, entry->name);
 			g_view_now = 0;
+			g_blank_manual = 0;
+			video_play(full);
 		}
 	}
 }
@@ -561,9 +538,7 @@ int main(int argc, char *argv[])
 		}
 
 		ui_begin();
-		if (g_view_video)
-			draw_video_stub(back);
-		else if (g_view_now)
+		if (g_view_now)
 			draw_now(&status, accept, back);
 		else
 			draw_browser(&status, accept, back);
