@@ -19,7 +19,7 @@ endif
 CFLAGS = -O2 -G0 -Wall -Wextra -Iinclude
 CXXFLAGS = $(CFLAGS)
 ASFLAGS = $(CFLAGS)
-LIBS = -lpspgu -lpspmp3 -lpspaudio -lpsppower -lpsputility -lm
+LIBS = -lpspgu -lpspmp3 -lpspaudiocodec -lpspaudio -lpsppower -lpsputility -lm
 
 EXTRA_TARGETS = EBOOT.PBP
 PSP_EBOOT_TITLE = SSSPlayer

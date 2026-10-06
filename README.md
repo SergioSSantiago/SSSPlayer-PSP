@@ -4,7 +4,7 @@ Music and media player for **PlayStation Portable Go** (and classic PSP), by Ser
 
 Sister project of [SSSPlayer for PS Vita](https://github.com/SergioSSantiago/SSSPlayer). Same idea, different console: a focused player that reaches your media on the device storage, plays audio (and later video), and stays usable on the PSP’s limited hardware.
 
-> **Status:** 0.2.0 plays MP3 and H.264/MP4 video (≤480×272) on PSP and PSP Go (same `EBOOT.PBP`).
+> **Status:** 0.2.1 plays MP3 and H.264/MP4 video with AAC audio (≤480×272) on PSP and PSP Go (same `EBOOT.PBP`).
 
 ## Why this port
 
@@ -27,8 +27,8 @@ Requires custom firmware (or PPSSPP) to run homebrew.
 
 1. Browse `ef0:` / `ms0:`, opening `MUSIC` or `MP3` when that folder exists
 2. Play MP3 (hardware decoder) with pause, seek, and next/previous
-3. H.264/MP4 video via Media Engine (≤480×272, silent for now)
-4. Later: M3U, video audio (AAC), OGG
+3. H.264/MP4 video via Media Engine with AAC audio (≤480×272)
+4. Later: M3U, OGG
 
 ## Controls
 
@@ -50,7 +50,7 @@ The browser opens on the storage list, the same idea as the Vita file screen: **
 
 ### Video (H.264 / MP4)
 
-Open an `.mp4` (or `.m4v`) with an **H.264** track at **480×272 or smaller**. Convert with HandBrake / ffmpeg using a PSP-style profile if needed. This build plays **video only** (no soundtrack yet). Square pauses; O / X stops.
+Open an `.mp4` (or `.m4v`) with **H.264** video (≤480×272) and **AAC** audio. A PSP / HandBrake profile works best. Square pauses; O / X stops.
 
 YouTube / heavy network features from the Vita app are **out of scope** for early PSP builds.
 

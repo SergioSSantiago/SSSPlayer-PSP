@@ -12,6 +12,8 @@
 #include <pspctrl.h>
 #include <pspdisplay.h>
 #include <pspge.h>
+#include <pspaudio.h>
+#include <pspaudiocodec.h>
 #include <psppower.h>
 #include <pspmpeg.h>
 #include <psputility.h>
@@ -32,8 +34,11 @@
 #define VIDEO_WORK_MAX 0x20000u
 #define VIDEO_MAX_IMAGES 4
 #define VIDEO_SAMPLE_MAX (512 * 1024)
+#define AUDIO_SAMPLE_MAX (8 * 1024)
 #define VIDEO_FRAME_FIRST 3
 #define VIDEO_FRAME_NEXT 0
+#define AAC_PCM_SAMPLES 1024
+#define AAC_CTX_WORDS 128
 
 typedef struct {
 	void *sps_buffer;
@@ -64,6 +69,110 @@ static uint8_t g_param_sets[512] __attribute__((aligned(64)));
 static uint8_t g_au[64] __attribute__((aligned(64)));
 static uint8_t g_work[VIDEO_WORK_MAX] __attribute__((aligned(64)));
 static uint8_t g_sample[VIDEO_SAMPLE_MAX] __attribute__((aligned(64)));
+static uint8_t g_asample[AUDIO_SAMPLE_MAX] __attribute__((aligned(64)));
+static unsigned long g_aac_ctx[AAC_CTX_WORDS] __attribute__((aligned(64)));
+static short g_aac_pcm[AAC_PCM_SAMPLES * 2] __attribute__((aligned(64)));
+
+typedef struct {
+	int opened;
+	int edram;
+	int src_ready;
+	int rate;
+	char err[96];
+} AacDecoder;
+
+static int load_av(int id);
+
+static void aac_close(AacDecoder *a)
+{
+	if (a->src_ready) {
+		sceAudioSRCChRelease();
+		a->src_ready = 0;
+	}
+	if (a->edram) {
+		sceAudiocodecReleaseEDRAM(g_aac_ctx);
+		a->edram = 0;
+	}
+	a->opened = 0;
+}
+
+static int aac_open(AacDecoder *a, int rate)
+{
+	int rc;
+
+	memset(a, 0, sizeof *a);
+	if (rate < 8000 || rate > 48000) {
+		snprintf(a->err, sizeof a->err, "Bad AAC rate %d", rate);
+		return -1;
+	}
+	if (load_av(PSP_MODULE_AV_AVCODEC) < 0 || load_av(PSP_MODULE_AV_AAC) < 0) {
+		snprintf(a->err, sizeof a->err, "Load AAC module");
+		return -1;
+	}
+	memset(g_aac_ctx, 0, sizeof g_aac_ctx);
+	g_aac_ctx[10] = (unsigned long)rate;
+	rc = sceAudiocodecCheckNeedMem(g_aac_ctx, PSP_CODEC_AAC);
+	if (rc < 0) {
+		snprintf(a->err, sizeof a->err, "AAC mem %08X", (unsigned)rc);
+		return -1;
+	}
+	rc = sceAudiocodecGetEDRAM(g_aac_ctx, PSP_CODEC_AAC);
+	if (rc < 0) {
+		snprintf(a->err, sizeof a->err, "AAC edram %08X", (unsigned)rc);
+		return -1;
+	}
+	a->edram = 1;
+	rc = sceAudiocodecInit(g_aac_ctx, PSP_CODEC_AAC);
+	if (rc < 0) {
+		snprintf(a->err, sizeof a->err, "AAC init %08X", (unsigned)rc);
+		aac_close(a);
+		return -1;
+	}
+	rc = sceAudioSRCChReserve(AAC_PCM_SAMPLES, rate, 2);
+	if (rc < 0) {
+		sceAudioSRCChRelease();
+		rc = sceAudioSRCChReserve(AAC_PCM_SAMPLES, rate, 2);
+	}
+	if (rc < 0) {
+		snprintf(a->err, sizeof a->err, "Audio SRC %08X", (unsigned)rc);
+		aac_close(a);
+		return -1;
+	}
+	a->src_ready = 1;
+	a->rate = rate;
+	a->opened = 1;
+	return 0;
+}
+
+static int aac_decode_play(AacDecoder *a, const void *frame, int size)
+{
+	int rc;
+	int in_size;
+
+	if (!a->opened || !frame || size <= 0)
+		return -1;
+	if (size > AUDIO_SAMPLE_MAX)
+		size = AUDIO_SAMPLE_MAX;
+	if (frame != g_asample)
+		memcpy(g_asample, frame, (size_t)size);
+	in_size = size < 1024 ? 1024 : size;
+	if (size < in_size)
+		memset(g_asample + size, 0, (size_t)(in_size - size));
+	sceKernelDcacheWritebackRange(g_asample, (unsigned)((in_size + 63) & ~63));
+
+	g_aac_ctx[6] = (unsigned long)(uintptr_t)g_asample;
+	g_aac_ctx[7] = (unsigned long)in_size;
+	g_aac_ctx[8] = (unsigned long)(uintptr_t)g_aac_pcm;
+	g_aac_ctx[9] = (unsigned long)(AAC_PCM_SAMPLES * 2 * (int)sizeof(short));
+	memset(g_aac_pcm, 0, sizeof g_aac_pcm);
+
+	rc = sceAudiocodecDecode(g_aac_ctx, PSP_CODEC_AAC);
+	if (rc < 0)
+		return rc;
+	sceKernelDcacheInvalidateRange(g_aac_pcm, sizeof g_aac_pcm);
+	sceKernelDcacheWritebackRange(g_aac_pcm, sizeof g_aac_pcm);
+	return sceAudioSRCOutputBlocking(PSP_AUDIO_VOLUME_MAX, g_aac_pcm);
+}
 
 static void avc_fail(AvcDecoder *d, const char *msg)
 {
@@ -260,6 +369,7 @@ int video_play(const char *path)
 {
 	SssMp4 mp4;
 	AvcDecoder dec;
+	AacDecoder aac;
 	void *ddrtop = NULL;
 	void *frame_bufs[VIDEO_MAX_IMAGES];
 	void *vram;
@@ -271,6 +381,10 @@ int video_play(const char *path)
 	int pics;
 	int n;
 	int k;
+	uint32_t v_dts = 0;
+	uint32_t a_dts = 0;
+	double video_sec = 0.0;
+	double audio_sec = 0.0;
 	unsigned int prev = 0xFFFFFFFF;
 	SceCtrlData pad;
 	char body[96];
@@ -283,6 +397,7 @@ int video_play(const char *path)
 
 	memset(&mp4, 0, sizeof mp4);
 	memset(&dec, 0, sizeof dec);
+	memset(&aac, 0, sizeof aac);
 
 	if (sss_mp4_open(&mp4, path) < 0) {
 		show_message("Cannot open video", mp4.error);
@@ -309,6 +424,13 @@ int video_play(const char *path)
 		goto done;
 	}
 
+	if (mp4.has_audio) {
+		if (aac_open(&aac, (int)mp4.audio_rate) < 0) {
+			/* Video can still play silent if AAC init fails. */
+			aac.opened = 0;
+		}
+	}
+
 	vram = sceGeEdramGetAddr();
 	disp[0] = vram;
 	disp[1] = (uint8_t *)vram + VIDEO_STRIDE * VIDEO_HEIGHT * 4;
@@ -321,7 +443,8 @@ int video_play(const char *path)
 
 	ui_begin();
 	ui_fill(0, 0, UI_W, UI_H, 0xFF000000);
-	ui_text(16, 12, 1, UI_DIM, "Playing video — O stop");
+	ui_text(16, 12, 1, UI_DIM,
+	        aac.opened ? "Playing video+audio — O stop" : "Playing video — O stop");
 	ui_end();
 
 	while (running) {
@@ -347,13 +470,34 @@ int video_play(const char *path)
 			continue;
 		}
 
-		n = sss_mp4_next_sample(&mp4, g_sample, sizeof g_sample);
+		/* Keep audio ahead of / with the video clock. */
+		while (aac.opened && audio_sec <= video_sec + 0.05) {
+			uint32_t adts = 0;
+			int an = sss_mp4_next_audio(&mp4, g_asample, sizeof g_asample, &adts);
+			if (an < 0)
+				break;
+			if (an == 0) {
+				aac.opened = 0;
+				break;
+			}
+			a_dts = adts;
+			if (aac_decode_play(&aac, g_asample, an) < 0)
+				break;
+			if (mp4.audio.timescale > 0)
+				audio_sec = (double)a_dts / (double)mp4.audio.timescale;
+			else
+				audio_sec += (double)AAC_PCM_SAMPLES / (double)aac.rate;
+		}
+
+		n = sss_mp4_next_video(&mp4, g_sample, sizeof g_sample, &v_dts);
 		if (n < 0) {
 			show_message("Read error", mp4.error);
 			break;
 		}
 		if (n == 0)
 			break;
+		if (mp4.video.timescale > 0)
+			video_sec = (double)v_dts / (double)mp4.video.timescale;
 
 		for (k = 0; k < VIDEO_MAX_IMAGES; k++)
 			frame_bufs[k] = uncached(disp[disp_i]);
@@ -377,13 +521,13 @@ int video_play(const char *path)
 	}
 
 done:
+	aac_close(&aac);
 	avc_close(&dec);
 	sss_mp4_close(&mp4);
 	if (ddrtop)
 		free(ddrtop);
 	scePowerUnlock(0);
 	scePowerSetClockFrequency(222, 222, 111);
-	/* Restore GU UI path. */
 	ui_shutdown();
 	ui_init();
 	return 0;

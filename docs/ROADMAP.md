@@ -20,6 +20,6 @@
 
 ## M3 — media later
 
-- [x] Local H.264/MP4 via Media Engine NAL path (≤480×272; audio track next)
-- [ ] AAC / ATRAC audio while video plays
+- [x] Local H.264/MP4 via Media Engine NAL path (≤480×272)
+- [x] AAC audio while video plays
 - [ ] Optional network only if stable on Wi‑Fi PSP Go
