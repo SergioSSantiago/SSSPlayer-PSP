@@ -4,7 +4,7 @@ Music and media player for **PlayStation Portable Go** (and classic PSP), by Ser
 
 Sister project of [SSSPlayer for PS Vita](https://github.com/SergioSSantiago/SSSPlayer). Same idea, different console: a focused player that reaches your media on the device storage, plays audio (and later video), and stays usable on the PSP’s limited hardware.
 
-> **Status:** 0.1.4 plays MP3 from the file browser on PSP and PSP Go (same `EBOOT.PBP`). Other files (for example MP4) appear in the list but are not playable yet.
+> **Status:** 0.1.5 plays MP3 from the file browser on PSP and PSP Go (same `EBOOT.PBP`). Other files (for example MP4) appear in the list but are not playable yet.
 
 ## Why this port
 
@@ -70,6 +70,16 @@ Copy `EBOOT.PBP` into a `SSSPlayer` folder on the memory you want to launch from
 - Memory Stick (classic PSP, or M2 on PSP Go): `ms0:/PSP/GAME/SSSPlayer/EBOOT.PBP`
 
 Launch it from the XMB Games menu under CFW. The same file runs on PSP-1000/2000/3000 and PSP Go.
+
+### Listen with the PSP Go screen closed
+
+While a track is playing or paused, SSSPlayer blocks **auto-suspend** so idle sleep does not stop the music. It does **not** force the display to stay on.
+
+On PSP Go, also set:
+
+**Settings → System Settings → Display Panel Close Options → Standard**
+
+(not **Enter Sleep Mode**). Then close the slide while music plays. If that option is Sleep Mode, closing the panel suspends the whole system and audio stops — put the **HOLD** switch down before closing as a workaround, or change the setting to Standard.
 
 ## Relation to Vita SSSPlayer
 

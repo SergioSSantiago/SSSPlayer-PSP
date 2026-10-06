@@ -4,6 +4,7 @@
 #include <pspaudio.h>
 #include <pspmp3.h>
 #include <pspiofilemgr.h>
+#include <psppower.h>
 #include <psputility.h>
 #include <psputility_modules.h>
 #include <stdio.h>
@@ -589,6 +590,8 @@ static int audio_thread(SceSize args, void *argp)
 			sceKernelDelayThread(20 * 1000);
 			continue;
 		}
+		/* Keep auto-suspend away even if the UI thread stalls with the lid closed. */
+		scePowerTick(PSP_POWER_TICK_SUSPEND);
 		if (g_paused) {
 			output_silence();
 			continue;

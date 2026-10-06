@@ -96,9 +96,11 @@ static void update_power(const SssPlayStatus *st)
 			scePowerSetClockFrequency(222, 222, 111);
 		g_clock_fast = want_fast;
 	}
-	/* Do not PowerTick: that kept the display awake on PSP Go (lid closed
-	 * still lit). Let the system dim/blank the screen; audio keeps running
-	 * until a full suspend. */
+	/* While audio is active, block auto-suspend only. Do not tick DISPLAY,
+	 * so the backlight can still turn off / the Go lid can close without
+	 * forcing the screen to stay lit. */
+	if (st->state == SSS_PLAY_PLAYING || st->state == SSS_PLAY_PAUSED)
+		scePowerTick(PSP_POWER_TICK_SUSPEND);
 }
 
 static void draw_brackets(int x, int y, int size)
