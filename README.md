@@ -4,7 +4,7 @@ Music and media player for **PlayStation Portable Go** (and classic PSP), by Ser
 
 Sister project of [SSSPlayer for PS Vita](https://github.com/SergioSSantiago/SSSPlayer). Same idea, different console: a focused player that reaches your media on the device storage, plays audio (and later video), and stays usable on the PSP’s limited hardware.
 
-> **Status:** 0.2.4 plays MP3 and H.264/MP4 video with AAC audio (≤480×272) on PSP and PSP Go (same `EBOOT.PBP`).
+> **Status:** 0.2.5 plays MP3 and H.264/MP4 video with AAC audio (≤480×272) on PSP and PSP Go (same `EBOOT.PBP`).
 
 ## Why this port
 
@@ -43,10 +43,10 @@ The accept button follows the system X/O setting.
 | L / R | Previous / next track | Previous / next track |
 | Triangle | Now playing | Back to files |
 | Select | Pause | Pause |
-| Square | Toggle LCD off (music keeps playing) | Toggle LCD off |
+| Square | LCD off (music keeps playing) | LCD off |
 | Start | Quit | Quit |
 
-The browser opens on the storage list, the same idea as the Vita file screen: **Internal (PSP Go)** and **Memory Stick**. Open one, then open `MUSIC` or `VIDEO`. Put MP3s in `ef0:/MUSIC` or `ms0:/MUSIC`. The header shows the build version (e.g. `Files  0.2.4`) so you can confirm the installed EBOOT.
+The browser opens on the storage list, the same idea as the Vita file screen: **Internal (PSP Go)** and **Memory Stick**. Open one, then open `MUSIC` or `VIDEO`. Put MP3s in `ef0:/MUSIC` or `ms0:/MUSIC`. The header shows the build version (e.g. `Files  0.2.5`) so you can confirm the installed EBOOT.
 
 ### Video (H.264 / MP4)
 

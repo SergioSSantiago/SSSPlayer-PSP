@@ -321,7 +321,7 @@ static void draw_browser(const SssPlayStatus *st, const char *accept,
 
 	draw_mini(st);
 	snprintf(hint, sizeof hint,
-	         "%s open  %s back  Square black  Triangle now  Start", accept,
+	         "%s open  %s back  Square LCD  Triangle now  Start", accept,
 	         back);
 	draw_hint(hint);
 }
@@ -373,32 +373,34 @@ static void draw_now(const SssPlayStatus *st, const char *accept, const char *ba
 
 	if (st->state == SSS_PLAY_STOPPED)
 		snprintf(hint, sizeof hint,
-		         "%s play   %s files   Triangle files   Start quit", accept,
-		         back);
+		         "%s play  %s files  Square LCD  Triangle files  Start",
+		         accept, back);
 	else if (st->state == SSS_PLAY_PAUSED)
 		snprintf(hint, sizeof hint,
-		         "%s play   %s stop   Triangle files   Start quit", accept,
+		         "%s play  %s stop  Square LCD  Triangle files  Start", accept,
 		         back);
 	else
 		snprintf(hint, sizeof hint,
-		         "%s pause   %s stop   Triangle files   Start quit", accept,
-		         back);
+		         "%s pause  %s stop  Square LCD  Triangle files  Start",
+		         accept, back);
 	draw_hint(hint);
 }
 
 static void draw_splash(void)
 {
 	const char *title = "SSSPlayer";
+	const char *by = "by SergioSSantiago";
+	const char *plat = "PSP and PSP Go";
 	char ver[16];
 
 	ui_begin();
 	draw_brackets(192, 64, 96);
 	ui_logo(192, 64, 96);
-	ui_text((UI_W - ui_text_px(title, 2)) / 2, 176, 2, UI_TEXT, title);
+	ui_text((UI_W - ui_text_px(title, 2)) / 2, 168, 2, UI_TEXT, title);
 	snprintf(ver, sizeof ver, "%s", SSSPLAYER_PSP_VERSION);
-	ui_text((UI_W - ui_text_px(ver, 1)) / 2, 200, 1, UI_DIM, ver);
-	ui_text((UI_W - ui_text_px("PSP and PSP Go", 1)) / 2, 216, 1, UI_MUTED,
-	        "PSP and PSP Go");
+	ui_text((UI_W - ui_text_px(ver, 1)) / 2, 196, 1, UI_DIM, ver);
+	ui_text((UI_W - ui_text_px(by, 1)) / 2, 216, 1, UI_WARM, by);
+	ui_text((UI_W - ui_text_px(plat, 1)) / 2, 236, 1, UI_MUTED, plat);
 	ui_end();
 }
 
