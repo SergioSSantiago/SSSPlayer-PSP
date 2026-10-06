@@ -17,6 +17,8 @@
 
 void ui_init(void);
 void ui_shutdown(void);
+/* GU_FALSE turns the LCD/backlight off without suspending the console. */
+void ui_display(int on);
 void ui_begin(void);
 void ui_end(void);
 void ui_fill(int x, int y, int w, int h, unsigned int color);

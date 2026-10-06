@@ -109,7 +109,13 @@ void ui_init(void)
 
 void ui_shutdown(void)
 {
+	sceGuDisplay(GU_TRUE);
 	sceGuTerm();
+}
+
+void ui_display(int on)
+{
+	sceGuDisplay(on ? GU_TRUE : GU_FALSE);
 }
 
 void ui_begin(void)

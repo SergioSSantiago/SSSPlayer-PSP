@@ -56,9 +56,9 @@ static int g_bitrate;
 static int g_spf;
 static int g_duration;
 static int g_played_samples;
-/* After seek/restart, ignore short EOF/empty decode so we do not skip tracks
- * or tear down the SRC channel by mistake. */
-static int g_soft_eof;
+/* After seek/restart, ignore EOF and decode hiccups so rapid seeks do not
+ * surface Decode errors or skip the track. */
+static int g_seek_guard;
 
 static SssPlayStatus g_status;
 
@@ -272,7 +272,12 @@ static void audio_close(int release_src)
 			sceAudioSRCChRelease();
 	}
 	g_paused = 0;
-	g_soft_eof = 0;
+	g_seek_guard = 0;
+}
+
+static void arm_seek_guard(void)
+{
+	g_seek_guard = 200;
 }
 
 static void refill_after_seek(void)
@@ -356,7 +361,7 @@ static int open_current(void)
 
 	g_played_samples = 0;
 	g_paused = 0;
-	g_soft_eof = 0;
+	g_seek_guard = 0;
 	publish(SSS_PLAY_PLAYING, name, NULL, 0, g_duration);
 	return 0;
 }
@@ -418,7 +423,7 @@ static int decode_frame(void)
 	int samples = 0;
 	int attempt;
 
-	for (attempt = 0; attempt < 3; attempt++) {
+	for (attempt = 0; attempt < 4; attempt++) {
 		if (sceMp3CheckStreamDataNeeded(g_handle) > 0)
 			fill_stream();
 
@@ -428,15 +433,22 @@ static int decode_frame(void)
 				bytes = sceMp3Decode(g_handle, &pcm);
 		}
 		/* 0x80671402 is EOF (negative as int). Never treat it as a hard error. */
-		if (bytes < 0 && !is_eof(bytes))
+		if (bytes < 0 && !is_eof(bytes)) {
+			if (g_seek_guard > 0) {
+				g_seek_guard--;
+				refill_after_seek();
+				output_silence();
+				return 1;
+			}
 			return bytes;
+		}
 		if (!is_eof(bytes) && pcm) {
 			samples = bytes / (2 * g_channels);
 			if (samples > 0)
 				break;
 		}
-		if (g_soft_eof > 0) {
-			g_soft_eof--;
+		if (g_seek_guard > 0) {
+			g_seek_guard--;
 			refill_after_seek();
 			output_silence();
 			return 1;
@@ -444,10 +456,17 @@ static int decode_frame(void)
 		if (is_eof(bytes) || !pcm || bytes == 0)
 			return 0;
 	}
-	if (!pcm || samples <= 0)
+	if (!pcm || samples <= 0) {
+		if (g_seek_guard > 0) {
+			g_seek_guard--;
+			output_silence();
+			return 1;
+		}
 		return 0;
+	}
 
-	g_soft_eof = 0;
+	if (g_seek_guard > 0)
+		g_seek_guard--;
 	output_pcm(pcm, samples);
 	if (g_handle < 0)
 		return -1;
@@ -485,7 +504,7 @@ static void cmd_seek(int delta)
 	if (status < 0)
 		return;
 	g_played_samples = (int)((long long)frame * g_spf);
-	g_soft_eof = 64;
+	arm_seek_guard();
 	refill_after_seek();
 	publish(g_paused ? SSS_PLAY_PAUSED : SSS_PLAY_PLAYING, NULL, NULL,
 	        g_rate > 0 ? g_played_samples / g_rate : 0, g_duration);
@@ -498,7 +517,7 @@ static void cmd_restart(void)
 	if (sceMp3ResetPlayPosition(g_handle) < 0)
 		return;
 	g_played_samples = 0;
-	g_soft_eof = 64;
+	arm_seek_guard();
 	refill_after_seek();
 	publish(g_paused ? SSS_PLAY_PAUSED : SSS_PLAY_PLAYING, NULL, NULL, 0,
 	        g_duration);
@@ -599,17 +618,22 @@ static int audio_thread(SceSize args, void *argp)
 		}
 
 		decoded = decode_frame();
-		if (decoded == 0)
-			cmd_next();
-		else if (decoded < 0 && g_handle >= 0) {
-			if (is_eof(decoded)) {
-				if (g_soft_eof > 0) {
-					g_soft_eof--;
-					refill_after_seek();
-					output_silence();
-				} else {
+		if (decoded == 0) {
+			if (g_seek_guard > 0) {
+				g_seek_guard--;
+				refill_after_seek();
+				output_silence();
+			} else {
+				cmd_next();
+			}
+		} else if (decoded < 0 && g_handle >= 0) {
+			if (g_seek_guard > 0 || is_eof(decoded)) {
+				if (g_seek_guard > 0)
+					g_seek_guard--;
+				refill_after_seek();
+				output_silence();
+				if (is_eof(decoded) && g_seek_guard <= 0)
 					cmd_next();
-				}
 			} else {
 				char err[96];
 				char name[SSS_NAME_MAX];
@@ -750,13 +774,15 @@ void player_seek(int delta_sec)
 	if (delta_sec == 0)
 		return;
 	lock();
+	/* Replace pending seek instead of stacking holds — rapid Left/Right
+	 * was queuing huge jumps and hitting Decode errors. */
 	if (g_cmd == CMD_NONE || g_cmd == CMD_SEEK) {
 		g_cmd = CMD_SEEK;
-		g_seek_delta += delta_sec;
-		if (g_seek_delta > 90)
-			g_seek_delta = 90;
-		if (g_seek_delta < -90)
-			g_seek_delta = -90;
+		g_seek_delta = delta_sec;
+		if (g_seek_delta > 30)
+			g_seek_delta = 30;
+		if (g_seek_delta < -30)
+			g_seek_delta = -30;
 	}
 	unlock();
 }

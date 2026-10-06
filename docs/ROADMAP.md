@@ -16,7 +16,7 @@
 
 - [ ] M3U playlists
 - [x] Simple UI theme (Terminus)
-- [x] Sleep / power: block auto-suspend + PowerLock while playing; black screen via HOLD/Square
+- [x] Sleep / power: block auto-suspend + PowerLock while playing; LCD off via idle/HOLD/Square
 
 ## M3 — media later
 

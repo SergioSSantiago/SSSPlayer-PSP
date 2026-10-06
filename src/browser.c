@@ -240,19 +240,18 @@ int browser_open(SssBrowser *browser)
 		return 1;
 	}
 
-	if (entry->is_dir == 0 && sss_path_is_mp3(entry->name)) {
-		browser->message[0] = '\0';
-		return 2;
-	}
-
-	if (entry->is_dir == 4 && sss_path_is_video(entry->name)) {
-		browser->message[0] = '\0';
-		return 3;
-	}
-
-	if (entry->is_dir == 2) {
+	/* Match by extension, not only the cached is_dir flag. */
+	if (entry->is_dir != 1 && entry->is_dir != 3) {
+		if (sss_path_is_video(entry->name)) {
+			browser->message[0] = '\0';
+			return 3;
+		}
+		if (sss_path_is_mp3(entry->name)) {
+			browser->message[0] = '\0';
+			return 2;
+		}
 		snprintf(browser->message, sizeof browser->message,
-		         "Not a supported media file");
+		         "Need MP3 or H.264 MP4");
 		return 0;
 	}
 	return 0;

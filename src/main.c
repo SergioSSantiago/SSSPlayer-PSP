@@ -35,6 +35,8 @@ static volatile int g_running = 1;
 static int g_cross_accept = 1;
 static int g_view_now;
 static int g_blank_manual;
+static int g_display_off;
+static int g_idle_blank;
 static int g_power_locked;
 static int g_list_top;
 static int g_clock_fast;
@@ -202,7 +204,11 @@ static void draw_browser(const SssPlayStatus *st, const char *accept,
 	char hint[80];
 	int i;
 
-	draw_header("Files");
+	{
+		char scene[32];
+		snprintf(scene, sizeof scene, "Files  %s", SSSPLAYER_PSP_VERSION);
+		draw_header(scene);
+	}
 	ui_fill(8, 40, UI_W - 16, 16, UI_RAISED);
 	ui_fill(12, 43, 3, 10, UI_TEXT);
 	if (browser_at_roots(&g_browser))
@@ -353,11 +359,27 @@ static void draw_splash(void)
 	ui_end();
 }
 
-static void draw_blank(void)
+static void set_screen_off(int off)
 {
-	ui_begin();
-	ui_fill(0, 0, UI_W, UI_H, 0xFF000000);
-	ui_end();
+	if (off == g_display_off)
+		return;
+	g_display_off = off;
+	if (off) {
+		/* Black frame, then disable LCD — console stays awake via PowerLock. */
+		ui_begin();
+		ui_fill(0, 0, UI_W, UI_H, 0xFF000000);
+		ui_end();
+		ui_display(0);
+	} else {
+		ui_display(1);
+	}
+}
+
+static void keep_screen_off(void)
+{
+	if (!g_display_off)
+		set_screen_off(1);
+	sceDisplayWaitVblankStart();
 }
 
 static void play_selection(void)
@@ -386,22 +408,29 @@ static int pressed_back(unsigned int pressed)
 	return (pressed & PSP_CTRL_CROSS) != 0;
 }
 
-static void handle_input(unsigned int buttons, unsigned int prev)
+static void handle_input(unsigned int buttons, unsigned int prev, int audio_on)
 {
 	unsigned int pressed = buttons & ~prev;
 	static int up_hold;
 	static int down_hold;
-	static int left_hold;
-	static int right_hold;
+	static int seek_cool;
+
+	if (seek_cool > 0)
+		seek_cool--;
 
 	if (pressed & PSP_CTRL_START) {
 		g_running = 0;
 		return;
 	}
-	if (pressed & PSP_CTRL_SQUARE)
+	if (pressed & PSP_CTRL_SQUARE) {
 		g_blank_manual = !g_blank_manual;
-	if (pressed & PSP_CTRL_TRIANGLE)
+		g_idle_blank = 0;
+	}
+	if (pressed & PSP_CTRL_TRIANGLE) {
 		g_view_now = !g_view_now;
+		g_blank_manual = 0;
+		g_idle_blank = 0;
+	}
 	if (pressed & PSP_CTRL_SELECT)
 		player_toggle_pause();
 	if (pressed & PSP_CTRL_LTRIGGER)
@@ -429,21 +458,18 @@ static void handle_input(unsigned int buttons, unsigned int prev)
 		down_hold = 0;
 	}
 
-	if (buttons & PSP_CTRL_LEFT) {
-		if (left_hold == 0 || (left_hold >= 12 && (left_hold % 6) == 0))
-			player_seek(-10);
-		left_hold++;
-	} else {
-		left_hold = 0;
+	/* Seek only on edge press, with a short cool-down between seeks. */
+	if ((pressed & PSP_CTRL_LEFT) && seek_cool == 0) {
+		player_seek(-10);
+		seek_cool = 18;
+	}
+	if ((pressed & PSP_CTRL_RIGHT) && seek_cool == 0) {
+		player_seek(10);
+		seek_cool = 18;
 	}
 
-	if (buttons & PSP_CTRL_RIGHT) {
-		if (right_hold == 0 || (right_hold >= 12 && (right_hold % 6) == 0))
-			player_seek(10);
-		right_hold++;
-	} else {
-		right_hold = 0;
-	}
+	if (pressed && audio_on)
+		g_idle_blank = 0;
 
 	if (!pressed_accept(pressed) && !pressed_back(pressed))
 		return;
@@ -454,6 +480,8 @@ static void handle_input(unsigned int buttons, unsigned int prev)
 		if (pressed_back(pressed)) {
 			player_stop();
 			g_view_now = 0;
+			g_blank_manual = 0;
+			g_idle_blank = 0;
 		}
 		return;
 	}
@@ -470,6 +498,8 @@ static void handle_input(unsigned int buttons, unsigned int prev)
 			sss_path_join(full, sizeof full, g_browser.path, entry->name);
 			g_view_now = 0;
 			g_blank_manual = 0;
+			g_idle_blank = 0;
+			set_screen_off(0);
 			video_play(full);
 		}
 	}
@@ -514,29 +544,40 @@ int main(int argc, char *argv[])
 		SssPlayStatus status;
 		const char *accept = g_cross_accept ? "X" : "O";
 		const char *back = g_cross_accept ? "O" : "X";
+		int audio_on;
+		int blank;
 
 		sceCtrlReadBufferPositive(&pad, 1);
 		player_get_status(&status);
 		update_power(&status);
-		/* HOLD locks buttons (system) and we draw a full black frame. */
+		audio_on = status.state == SSS_PLAY_PLAYING ||
+		           status.state == SSS_PLAY_PAUSED;
+
+		/* HOLD locks buttons (system). While music plays, idle blank + Square
+		 * turn the LCD off so closing the Go panel stays dark without sleep. */
 		if (!(pad.Buttons & PSP_CTRL_HOLD))
-			handle_input(pad.Buttons, prev_buttons);
+			handle_input(pad.Buttons, prev_buttons, audio_on);
 		prev_buttons = pad.Buttons;
 		if (!g_running)
 			break;
 
-		{
-			int audio_on = status.state == SSS_PLAY_PLAYING ||
-			               status.state == SSS_PLAY_PAUSED;
-			int blank = (pad.Buttons & PSP_CTRL_HOLD) != 0 ||
-			            (g_blank_manual && audio_on);
-
-			if (blank) {
-				draw_blank();
-				continue;
-			}
+		if (audio_on) {
+			if (g_idle_blank < 90)
+				g_idle_blank++;
+		} else {
+			g_idle_blank = 0;
+			g_blank_manual = 0;
 		}
 
+		blank = (pad.Buttons & PSP_CTRL_HOLD) != 0 ||
+		        (audio_on && (g_blank_manual || g_idle_blank >= 90));
+
+		if (blank) {
+			keep_screen_off();
+			continue;
+		}
+
+		set_screen_off(0);
 		ui_begin();
 		if (g_view_now)
 			draw_now(&status, accept, back);
@@ -544,6 +585,8 @@ int main(int argc, char *argv[])
 			draw_browser(&status, accept, back);
 		ui_end();
 	}
+
+	set_screen_off(0);
 
 	if (g_power_locked) {
 		scePowerUnlock(0);
