@@ -47,6 +47,7 @@ static SceUID g_fd = -1;
 static int g_handle = -1;
 static int g_src_ready;
 static int g_src_samples;
+static int g_src_rate;
 static int g_paused;
 static int g_rate;
 static int g_channels;
@@ -54,6 +55,9 @@ static int g_bitrate;
 static int g_spf;
 static int g_duration;
 static int g_played_samples;
+/* After seek/restart, ignore short EOF/empty decode so we do not skip tracks
+ * or tear down the SRC channel by mistake. */
+static int g_soft_eof;
 
 static SssPlayStatus g_status;
 
@@ -205,19 +209,69 @@ static int samples_per_frame(void)
 	return 1152;
 }
 
-static void audio_close(void)
+static void src_release(void)
+{
+	int i;
+
+	if (g_src_ready && g_src_samples > 0) {
+		memset(out_buf, 0, sizeof out_buf);
+		sceKernelDcacheWritebackRange(out_buf,
+		                              (unsigned)(g_src_samples * 2 *
+		                                         (int)sizeof(short)));
+		sceAudioSRCOutputBlocking(0, out_buf);
+	}
+	for (i = 0; i < 6; i++) {
+		if (sceAudioSRCChRelease() >= 0)
+			break;
+		sceKernelDelayThread(2 * 1000);
+	}
+	g_src_ready = 0;
+	g_src_samples = 0;
+	g_src_rate = 0;
+}
+
+static int src_ensure(int rate)
+{
+	int i;
+	int rc;
+
+	if (rate <= 0)
+		return -1;
+	if (g_src_ready && g_src_rate == rate && g_src_samples > 0)
+		return 0;
+
+	src_release();
+	for (i = 0; i < 8; i++) {
+		rc = sceAudioSRCChReserve(1152, rate, 2);
+		if (rc >= 0) {
+			g_src_ready = 1;
+			g_src_samples = 1152;
+			g_src_rate = rate;
+			return 0;
+		}
+		if ((unsigned)rc == AUDIO_SRC_ALREADY_RESERVED)
+			sceAudioSRCChRelease();
+		sceKernelDelayThread(3 * 1000);
+	}
+	return -1;
+}
+
+static void audio_close(int release_src)
 {
 	release_handle();
 	if (g_fd >= 0) {
 		sceIoClose(g_fd);
 		g_fd = -1;
 	}
-	/* Always release: a failed reserve can leave the channel owned while
-	 * g_src_ready is still 0, which then blocks every later play. */
-	sceAudioSRCChRelease();
-	g_src_ready = 0;
+	if (release_src)
+		src_release();
+	else {
+		/* Keep SRC across same-rate track changes; still clear orphans. */
+		if (!g_src_ready)
+			sceAudioSRCChRelease();
+	}
 	g_paused = 0;
-	g_src_samples = 0;
+	g_soft_eof = 0;
 }
 
 static void refill_after_seek(void)
@@ -244,7 +298,8 @@ static int open_current(void)
 	if (g_pl_index < 0 || g_pl_index >= g_pl_count)
 		return -1;
 
-	audio_close();
+	/* Keep the SRC channel when switching tracks; only reopen the MP3. */
+	audio_close(0);
 	name = g_pl_names[g_pl_index];
 	sss_path_join(full, sizeof full, g_pl_dir, name);
 
@@ -256,7 +311,7 @@ static int open_current(void)
 
 	size = sceIoLseek(g_fd, 0, PSP_SEEK_END);
 	if (size <= 0) {
-		audio_close();
+		audio_close(1);
 		publish(SSS_PLAY_STOPPED, name, "Empty file", 0, 0);
 		return -1;
 	}
@@ -269,7 +324,7 @@ static int open_current(void)
 	}
 	if (status < 0) {
 		char err[96];
-		audio_close();
+		audio_close(1);
 		snprintf(err, sizeof err, "Invalid MP3 %08X", (unsigned)status);
 		publish(SSS_PLAY_STOPPED, name, err, 0, 0);
 		return -1;
@@ -286,6 +341,12 @@ static int open_current(void)
 	if (g_bitrate < 0)
 		g_bitrate = 0;
 
+	if (src_ensure(g_rate) < 0) {
+		audio_close(1);
+		publish(SSS_PLAY_STOPPED, name, "Audio channel busy", 0, 0);
+		return -1;
+	}
+
 	frames = sceMp3GetFrameNum(g_handle);
 	if (frames > 0 && g_rate > 0 && g_spf > 0)
 		g_duration = (int)(((long long)frames * g_spf) / g_rate);
@@ -294,6 +355,7 @@ static int open_current(void)
 
 	g_played_samples = 0;
 	g_paused = 0;
+	g_soft_eof = 0;
 	publish(SSS_PLAY_PLAYING, name, NULL, 0, g_duration);
 	return 0;
 }
@@ -302,30 +364,13 @@ static void output_pcm(const short *pcm, int samples)
 {
 	int i;
 	int copy;
-	int rc;
 
-	if (!g_src_ready) {
-		int reserve = samples;
-		if (reserve < 17)
-			reserve = 17;
-		if (reserve > 1152)
-			reserve = 1152;
-		rc = sceAudioSRCChReserve(reserve, g_rate, 2);
-		if ((unsigned)rc == AUDIO_SRC_ALREADY_RESERVED) {
-			sceAudioSRCChRelease();
-			rc = sceAudioSRCChReserve(reserve, g_rate, 2);
-		}
-		if (rc < 0) {
-			char err[96];
-			char name[SSS_NAME_MAX];
-			snprintf(name, sizeof name, "%s", g_status.name);
-			snprintf(err, sizeof err, "Audio channel busy");
-			audio_close();
-			publish(SSS_PLAY_STOPPED, name, err, 0, g_duration);
-			return;
-		}
-		g_src_ready = 1;
-		g_src_samples = reserve;
+	if (src_ensure(g_rate) < 0) {
+		char name[SSS_NAME_MAX];
+		snprintf(name, sizeof name, "%s", g_status.name);
+		audio_close(1);
+		publish(SSS_PLAY_STOPPED, name, "Audio channel busy", 0, g_duration);
+		return;
 	}
 
 	copy = samples;
@@ -369,27 +414,38 @@ static int decode_frame(void)
 {
 	short *pcm = NULL;
 	int bytes;
-	int samples;
+	int samples = 0;
+	int attempt;
 
-	if (sceMp3CheckStreamDataNeeded(g_handle) > 0)
-		fill_stream();
+	for (attempt = 0; attempt < 3; attempt++) {
+		if (sceMp3CheckStreamDataNeeded(g_handle) > 0)
+			fill_stream();
 
-	bytes = sceMp3Decode(g_handle, &pcm);
-	if (is_eof(bytes)) {
-		if (fill_stream() > 0)
-			bytes = sceMp3Decode(g_handle, &pcm);
+		bytes = sceMp3Decode(g_handle, &pcm);
+		if (is_eof(bytes)) {
+			if (fill_stream() > 0)
+				bytes = sceMp3Decode(g_handle, &pcm);
+		}
+		if (bytes < 0)
+			return bytes;
+		if (!is_eof(bytes) && pcm) {
+			samples = bytes / (2 * g_channels);
+			if (samples > 0)
+				break;
+		}
+		if (g_soft_eof > 0) {
+			g_soft_eof--;
+			refill_after_seek();
+			output_silence();
+			return 1;
+		}
+		if (is_eof(bytes) || !pcm || bytes == 0)
+			return 0;
 	}
-	if (is_eof(bytes))
-		return 0;
-	if (bytes < 0)
-		return bytes;
-	if (!pcm)
+	if (!pcm || samples <= 0)
 		return 0;
 
-	samples = bytes / (2 * g_channels);
-	if (samples <= 0)
-		return 0;
-
+	g_soft_eof = 0;
 	output_pcm(pcm, samples);
 	if (g_handle < 0)
 		return -1;
@@ -427,6 +483,7 @@ static void cmd_seek(int delta)
 	if (status < 0)
 		return;
 	g_played_samples = (int)((long long)frame * g_spf);
+	g_soft_eof = 64;
 	refill_after_seek();
 	publish(g_paused ? SSS_PLAY_PAUSED : SSS_PLAY_PLAYING, NULL, NULL,
 	        g_rate > 0 ? g_played_samples / g_rate : 0, g_duration);
@@ -439,6 +496,7 @@ static void cmd_restart(void)
 	if (sceMp3ResetPlayPosition(g_handle) < 0)
 		return;
 	g_played_samples = 0;
+	g_soft_eof = 64;
 	refill_after_seek();
 	publish(g_paused ? SSS_PLAY_PAUSED : SSS_PLAY_PLAYING, NULL, NULL, 0,
 	        g_duration);
@@ -449,7 +507,7 @@ static void cmd_next(void)
 	if (g_pl_index + 1 >= g_pl_count) {
 		char name[SSS_NAME_MAX];
 		snprintf(name, sizeof name, "%s", g_pl_index >= 0 ? g_pl_names[g_pl_index] : "");
-		audio_close();
+		audio_close(1);
 		publish(SSS_PLAY_STOPPED, name, "End of playlist", g_duration, g_duration);
 		return;
 	}
@@ -505,7 +563,7 @@ static int audio_thread(SceSize args, void *argp)
 		else if (cmd == CMD_STOP) {
 			char name[SSS_NAME_MAX];
 			snprintf(name, sizeof name, "%s", g_status.name);
-			audio_close();
+			audio_close(1);
 			publish(SSS_PLAY_STOPPED, name, NULL, 0, 0);
 		} else if (cmd == CMD_PAUSE) {
 			if (g_handle >= 0) {
@@ -544,12 +602,12 @@ static int audio_thread(SceSize args, void *argp)
 			char name[SSS_NAME_MAX];
 			snprintf(name, sizeof name, "%s", g_pl_names[g_pl_index]);
 			snprintf(err, sizeof err, "Decode %08X", (unsigned)decoded);
-			audio_close();
+			audio_close(1);
 			publish(SSS_PLAY_STOPPED, name, err, 0, 0);
 		}
 	}
 
-	audio_close();
+	audio_close(1);
 	sceKernelExitThread(0);
 	return 0;
 }

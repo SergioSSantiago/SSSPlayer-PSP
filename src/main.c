@@ -24,7 +24,8 @@ PSP_HEAP_SIZE_KB(8192);
 
 #define ROW_Y 60
 #define ROW_H 20
-#define ROW_N 8
+#define ROW_N 7
+#define MSG_Y 204
 #define MINI_Y 222
 #define HINT_Y 258
 
@@ -95,8 +96,9 @@ static void update_power(const SssPlayStatus *st)
 			scePowerSetClockFrequency(222, 222, 111);
 		g_clock_fast = want_fast;
 	}
-	if (want_fast)
-		scePowerTick(PSP_POWER_TICK_SUSPEND);
+	/* Do not PowerTick: that kept the display awake on PSP Go (lid closed
+	 * still lit). Let the system dim/blank the screen; audio keeps running
+	 * until a full suspend. */
 }
 
 static void draw_brackets(int x, int y, int size)
@@ -233,7 +235,7 @@ static void draw_browser(const SssPlayStatus *st, const char *accept,
 			sss_path_tail(shown, sizeof shown, entry->name, 40);
 			snprintf(label, sizeof label, "%s/", shown);
 		} else if (entry->is_dir == 2) {
-			color = UI_MUTED;
+			color = UI_DIM;
 			sss_path_tail(shown, sizeof shown, entry->name, 40);
 			snprintf(label, sizeof label, "%s", shown);
 		} else {
@@ -243,8 +245,10 @@ static void draw_browser(const SssPlayStatus *st, const char *accept,
 		ui_text(18, y + 6, 1, color, label);
 	}
 
-	if (g_browser.message[0] && g_browser.count > 0)
-		ui_text(8, ROW_Y + ROW_N * ROW_H, 1, UI_WARM, g_browser.message);
+	if (g_browser.message[0] && g_browser.count > 0) {
+		ui_fill(8, MSG_Y, UI_W - 16, 16, UI_RAISED);
+		ui_text(18, MSG_Y + 4, 1, UI_WARM, g_browser.message);
+	}
 
 	draw_mini(st);
 	snprintf(hint, sizeof hint, "%s open   %s back   Triangle now   Start quit",

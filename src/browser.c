@@ -236,8 +236,10 @@ int browser_open(SssBrowser *browser)
 		return 1;
 	}
 
-	if (entry->is_dir == 0 && sss_path_is_mp3(entry->name))
+	if (entry->is_dir == 0 && sss_path_is_mp3(entry->name)) {
+		browser->message[0] = '\0';
 		return 2;
+	}
 
 	if (entry->is_dir == 2) {
 		snprintf(browser->message, sizeof browser->message,
