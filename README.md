@@ -4,7 +4,7 @@ Music and media player for **PlayStation Portable Go** (and classic PSP), by Ser
 
 Sister project of [SSSPlayer for PS Vita](https://github.com/SergioSSantiago/SSSPlayer). Same idea, different console: a focused player that reaches your media on the device storage, plays audio (and later video), and stays usable on the PSP’s limited hardware.
 
-> **Status:** 0.2.6 plays MP3 and H.264/MP4 video with AAC audio (≤480×272) on PSP and PSP Go (same `EBOOT.PBP`).
+> **Status:** 0.2.7 plays MP3 and H.264/MP4 video with AAC audio (≤480×272) on PSP and PSP Go (same `EBOOT.PBP`).
 
 ## Why this port
 
@@ -46,7 +46,7 @@ The accept button follows the system X/O setting.
 | Square | LCD off (music keeps playing) | LCD off |
 | Start | Quit | Quit |
 
-The browser opens on the storage list, the same idea as the Vita file screen: **Internal (PSP Go)** and **Memory Stick**. Open one, then open `MUSIC` or `VIDEO`. Put MP3s in `ef0:/MUSIC` or `ms0:/MUSIC`. The header shows the build version (e.g. `Files  0.2.6`) so you can confirm the installed EBOOT.
+The browser opens on the storage list, the same idea as the Vita file screen: **Internal (PSP Go)** and **Memory Stick**. Open one, then open `MUSIC` or `VIDEO`. Put MP3s in `ef0:/MUSIC` or `ms0:/MUSIC`. The header shows the build version (e.g. `Files  0.2.7`) so you can confirm the installed EBOOT.
 
 ### Video (H.264 / MP4)
 
@@ -82,7 +82,7 @@ Launch it from the XMB Games menu under CFW. The same file runs on PSP-1000/2000
 While a track is playing or paused, SSSPlayer:
 
 - Blocks **auto-suspend** and locks Power-button sleep (`scePowerLock`) so the console stays on and music continues
-- Turns the **LCD and backlight fully off** (brightness 0 + `sceDisplayDisable`) when you **close the Go slide**, or when **HOLD** / **Square** is used — not after idle time
+- Turns the **LCD and backlight fully off** (kernel brightness via CFW `kubridge`) when you **close the Go slide**, or when **HOLD** / **Square** is used — not after idle time
 - Opening the slide (or releasing HOLD / Square again) turns the LCD back on
 
 Typical flow: start a track → close the panel → LCD off, music keeps playing. Open the panel to see the UI again.

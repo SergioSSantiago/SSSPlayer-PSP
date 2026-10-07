@@ -25,3 +25,9 @@ dist/
 .env.*
 *.pem
 *.key
+plugin/sss_lcd/*.o
+plugin/sss_lcd/*.elf
+plugin/sss_lcd/*.prx
+plugin/sss_lcd/exports.c
+plugin/sss_lcd/SssLcd.S
+plugin/sss_lcd/SssLcd_*.S

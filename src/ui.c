@@ -2,6 +2,7 @@
 
 #include "font8x8_basic.h"
 #include "sss_logo.h"
+#include "sss_lcd.h"
 
 #include <pspkernel.h>
 #include <pspdisplay.h>
@@ -11,17 +12,9 @@
 #define BUF_WIDTH 512
 #define FRAME_SIZE (BUF_WIDTH * UI_H * 4)
 
-/* From sceDisplay_driver (see display_bright.S). */
-void sceDisplayDisable(void);
-void sceDisplayEnable(void);
-void sceDisplaySetBrightness(int level, int unk1);
-void sceDisplayGetBrightness(int *level, int *unk1);
-
 static unsigned int __attribute__((aligned(16))) list[262144];
 static unsigned int __attribute__((aligned(16))) font_tex[128 * 64];
 static int font_ready;
-static int g_saved_bright = -1;
-static int g_lcd_hw_off;
 
 typedef struct Vertex {
 	float u, v;
@@ -124,31 +117,13 @@ void ui_shutdown(void)
 void ui_display(int on)
 {
 	if (on) {
-		if (g_lcd_hw_off) {
-			sceDisplayEnable();
-			g_lcd_hw_off = 0;
-		}
-		if (g_saved_bright >= 0) {
-			sceDisplaySetBrightness(g_saved_bright, 0);
-			g_saved_bright = -1;
-		}
+		lcd_set(1);
 		sceGuDisplay(GU_TRUE);
 	} else {
-		int level = 0;
-		int unk = 0;
-
-		/* GuDisplay(false) only blanks the framebuffer — backlight stays
-		 * on. Brightness 0 + DisplayDisable turn the LCD/backlight off. */
-		if (g_saved_bright < 0) {
-			sceDisplayGetBrightness(&level, &unk);
-			g_saved_bright = (level > 0 && level <= 100) ? level : 50;
-		}
-		sceDisplaySetBrightness(0, 0);
+		/* GuDisplay(false) blanks pixels only; lcd_set(0) kills backlight
+		 * via kubridge kernel call (CFW). */
 		sceGuDisplay(GU_FALSE);
-		if (!g_lcd_hw_off) {
-			sceDisplayDisable();
-			g_lcd_hw_off = 1;
-		}
+		lcd_set(0);
 	}
 }
 

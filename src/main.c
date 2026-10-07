@@ -5,6 +5,7 @@
  */
 
 #include "sss_browser.h"
+#include "sss_lcd.h"
 #include "sss_player.h"
 #include "sss_ui.h"
 #include "sss_video.h"
@@ -421,6 +422,8 @@ static void keep_screen_off(void)
 {
 	if (!g_display_off)
 		set_screen_off(1);
+	else
+		lcd_set(0); /* keep backlight killed if CFW restores it */
 	sceDisplayWaitVblankStart();
 }
 
@@ -551,6 +554,7 @@ int main(int argc, char *argv[])
 
 	setup_callbacks();
 	detect_psp_go();
+	lcd_init();
 	ui_init();
 	draw_splash();
 
