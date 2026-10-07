@@ -170,6 +170,13 @@ int ui_text_px(const char *text, int scale)
 	return (int)strlen(text) * 8 * scale;
 }
 
+int ui_text_sm_px(const char *text)
+{
+	if (!text)
+		return 0;
+	return (int)strlen(text) * 6;
+}
+
 void ui_text(int x, int y, int scale, unsigned int color, const char *text)
 {
 	const unsigned char *s;
@@ -194,5 +201,31 @@ void ui_text(int x, int y, int scale, unsigned int color, const char *text)
 		sprite((float)(col * 8), (float)(row * 8), (float)(col * 8 + 8),
 		       (float)(row * 8 + 8), x, y, gw, 8 * scale, color);
 		x += gw;
+	}
+}
+
+void ui_text_sm(int x, int y, unsigned int color, const char *text)
+{
+	const unsigned char *s;
+
+	if (!text)
+		return;
+	bind_font();
+	for (s = (const unsigned char *)text; *s; s++) {
+		unsigned char c = *s;
+		int index;
+		int col;
+		int row;
+
+		if (x >= UI_W - 4)
+			break;
+		if (c < 32 || c > 127)
+			c = '?';
+		index = c - 32;
+		col = index % 16;
+		row = index / 16;
+		sprite((float)(col * 8), (float)(row * 8), (float)(col * 8 + 8),
+		       (float)(row * 8 + 8), x, y, 6, 7, color);
+		x += 6;
 	}
 }

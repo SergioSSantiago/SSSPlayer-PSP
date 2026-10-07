@@ -28,9 +28,9 @@ PSP_HEAP_SIZE_KB(20480);
 #define ROW_Y 60
 #define ROW_H 20
 #define ROW_N 7
-#define MSG_Y 204
-#define MINI_Y 222
-#define HINT_Y 258
+#define MSG_Y 200
+#define MINI_Y 216
+#define HINT_Y 248
 /* PSP Go slide-open bit (NewSlide). Not in the public enum; CFW often exposes it. */
 #define SSS_CTRL_SLIDE_OPEN 0x20000000u
 
@@ -198,11 +198,14 @@ static void draw_header(const char *scene)
 	}
 }
 
-static void draw_hint(const char *text)
+static void draw_hint(const char *line1, const char *line2)
 {
-	ui_fill(0, HINT_Y - 4, UI_W, UI_H - (HINT_Y - 4), UI_SURFACE);
-	ui_fill(0, HINT_Y - 4, UI_W, 1, UI_MUTED);
-	ui_text(8, HINT_Y, 1, UI_DIM, text);
+	ui_fill(0, HINT_Y - 2, UI_W, UI_H - (HINT_Y - 2), UI_SURFACE);
+	ui_fill(0, HINT_Y - 2, UI_W, 1, UI_MUTED);
+	if (line1)
+		ui_text_sm(6, HINT_Y, UI_DIM, line1);
+	if (line2)
+		ui_text_sm(6, HINT_Y + 10, UI_DIM, line2);
 }
 
 static void draw_mini(const SssPlayStatus *st)
@@ -249,7 +252,6 @@ static void draw_browser(const SssPlayStatus *st, const char *accept,
 {
 	char crumb[80];
 	char shown[40];
-	char hint[80];
 	int i;
 
 	{
@@ -325,10 +327,16 @@ static void draw_browser(const SssPlayStatus *st, const char *accept,
 	}
 
 	draw_mini(st);
-	snprintf(hint, sizeof hint,
-	         "%s open  %s back  Square LCD  Triangle now  Start", accept,
-	         back);
-	draw_hint(hint);
+	{
+		char h1[72];
+		char h2[72];
+
+		snprintf(h1, sizeof h1, "%s open  %s back  Select pause  L/R prev/next",
+		         accept, back);
+		snprintf(h2, sizeof h2,
+		         "Left/Right seek  Square LCD  Triangle now  Start quit");
+		draw_hint(h1, h2);
+	}
 }
 
 static void draw_now(const SssPlayStatus *st, const char *accept, const char *back)
@@ -336,7 +344,8 @@ static void draw_now(const SssPlayStatus *st, const char *accept, const char *ba
 	char pos[16];
 	char dur[16];
 	char line[80];
-	char hint[80];
+	char h1[72];
+	char h2[72];
 	int width = 0;
 	const char *state;
 
@@ -377,18 +386,17 @@ static void draw_now(const SssPlayStatus *st, const char *accept, const char *ba
 	}
 
 	if (st->state == SSS_PLAY_STOPPED)
-		snprintf(hint, sizeof hint,
-		         "%s play  %s files  Square LCD  Triangle files  Start",
+		snprintf(h1, sizeof h1, "%s play  %s files  Select pause  L/R prev/next",
 		         accept, back);
 	else if (st->state == SSS_PLAY_PAUSED)
-		snprintf(hint, sizeof hint,
-		         "%s play  %s stop  Square LCD  Triangle files  Start", accept,
-		         back);
-	else
-		snprintf(hint, sizeof hint,
-		         "%s pause  %s stop  Square LCD  Triangle files  Start",
+		snprintf(h1, sizeof h1, "%s play  %s stop  Select pause  L/R prev/next",
 		         accept, back);
-	draw_hint(hint);
+	else
+		snprintf(h1, sizeof h1, "%s pause  %s stop  Select pause  L/R prev/next",
+		         accept, back);
+	snprintf(h2, sizeof h2,
+	         "Left/Right seek  Square LCD  Triangle files  Start quit");
+	draw_hint(h1, h2);
 }
 
 static void draw_splash(void)

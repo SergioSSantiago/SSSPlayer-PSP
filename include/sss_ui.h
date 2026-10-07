@@ -23,7 +23,10 @@ void ui_begin(void);
 void ui_end(void);
 void ui_fill(int x, int y, int w, int h, unsigned int color);
 void ui_text(int x, int y, int scale, unsigned int color, const char *text);
+/* Compact glyphs (~6×7) for dense hint bars. */
+void ui_text_sm(int x, int y, unsigned int color, const char *text);
 void ui_logo(int x, int y, int size);
 int ui_text_px(const char *text, int scale);
+int ui_text_sm_px(const char *text);
 
 #endif
